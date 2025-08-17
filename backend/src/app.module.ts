@@ -4,51 +4,50 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { TerminusModule } from '@nestjs/terminus';
 import { APP_GUARD } from '@nestjs/core';
 
-// Modules de base
-import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { TeamsModule } from './teams/teams.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { MessagesModule } from './messages/messages.module';
-import { WebsocketModule } from './websocket/websocket.module';
+import { WebSocketModule } from './websocket/websocket.module';
+import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 
-// Guards
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
   imports: [
-    // Configuration
+    // Configuration et sécurité
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env', 'config.env'],
     }),
-    
-    // Rate limiting
     ThrottlerModule.forRoot([
       {
-        ttl: 60000, // 1 minute
-        limit: 100, // 100 requêtes par minute
+        ttl: parseInt(process.env.THROTTLE_TTL || '60'),
+        limit: parseInt(process.env.THROTTLE_LIMIT || '100'),
       },
     ]),
-    
-    // Health checks
     TerminusModule,
-    
-    // Modules de base de données
+
+    // Modules de base
     PrismaModule,
-    
+    HealthModule,
+
     // Modules métier
     AuthModule,
     UsersModule,
     TeamsModule,
     RoomsModule,
     MessagesModule,
-    WebsocketModule,
-    HealthModule,
+    WebSocketModule,
   ],
   providers: [
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

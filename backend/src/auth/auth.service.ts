@@ -1,142 +1,149 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
+import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcrypt';
 
-// 🌸 Utilisateur temporaire en mémoire
-interface TempUser {
-  id: string;
-  username: string;
-  email: string;
-  password: string;
-  avatar?: string;
-  status: string;
-  createdAt: Date;
-}
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateUserDto } from '../users/dto/create-user.dto';
+import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
-  private users: TempUser[] = [];
-  private userCounter = 1;
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+    private configService: ConfigService,
+  ) {}
 
-  constructor(private jwtService: JwtService) {
-    // 🌸 Créer un utilisateur de test
-    this.users.push({
-      id: '1',
-      username: 'testuser',
-      email: 'test@eterna.com',
-      password: 'password123', // En production, ce serait hashé
-      status: 'En ligne',
-      createdAt: new Date(),
+  async validateUser(email: string, password: string): Promise<any> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: { profile: true },
     });
-  }
 
-  // 🌸 Validation d'un utilisateur (par username ou email)
-  async validateUser(identifier: string, password: string): Promise<any> {
-    console.log('🔍 Recherche utilisateur avec identifier:', identifier);
-    console.log('👥 Utilisateurs disponibles:', this.users.map(u => ({ username: u.username, email: u.email })));
-    
-    // Recherche par username OU email
-    const user = this.users.find(u => 
-      u.username.toLowerCase() === identifier.toLowerCase() || 
-      u.email.toLowerCase() === identifier.toLowerCase()
-    );
-    
-    console.log('🎯 Utilisateur trouvé:', user ? { username: user.username, email: user.email } : 'AUCUN');
-    
-    if (user && user.password === password) {
-      console.log('🔑 Mot de passe correct');
+    if (user && (await bcrypt.compare(password, user.password))) {
       const { password, ...result } = user;
       return result;
-    }
-    
-    if (user) {
-      console.log('❌ Mot de passe incorrect');
-    } else {
-      console.log('❌ Aucun utilisateur trouvé avec cet identifiant');
     }
     return null;
   }
 
-  // 🌸 Connexion
   async login(loginDto: LoginDto) {
-    console.log('🔐 Tentative de connexion avec:', loginDto);
-    
-    const user = await this.validateUser(loginDto.username, loginDto.password);
-    console.log('👤 Utilisateur trouvé:', user ? 'OUI' : 'NON');
+    const user = await this.validateUser(loginDto.email, loginDto.password);
     
     if (!user) {
-      console.log('❌ Identifiants invalides');
-      throw new UnauthorizedException('Identifiants invalides');
+      throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
-    const payload = { username: user.username, sub: user.id };
-    console.log('✅ Connexion réussie pour:', user.username);
+    // Mettre à jour le statut en ligne
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { isOnline: true, lastSeen: new Date() },
+    });
+
+    const payload = { email: user.email, sub: user.id, username: user.username };
+    
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        avatar: user.avatar,
+        bio: user.bio,
+        isOnline: true,
+        profile: user.profile,
+      },
+      access_token: this.jwtService.sign(payload),
+      refresh_token: this.generateRefreshToken(payload),
+    };
+  }
+
+  async register(createUserDto: CreateUserDto) {
+    // Vérifier si l'utilisateur existe déjà
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: createUserDto.email },
+          { username: createUserDto.username },
+        ],
+      },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Un utilisateur avec cet email ou nom d\'utilisateur existe déjà');
+    }
+
+    // Hasher le mot de passe
+    const hashedPassword = await bcrypt.hash(
+      createUserDto.password,
+      parseInt(this.configService.get('BCRYPT_ROUNDS', '12')),
+    );
+
+    // Créer l'utilisateur
+    const user = await this.prisma.user.create({
+      data: {
+        email: createUserDto.email,
+        username: createUserDto.username,
+        password: hashedPassword,
+        avatar: createUserDto.avatar,
+        bio: createUserDto.bio,
+      },
+      include: { profile: true },
+    });
+
+    // Créer le profil utilisateur
+    if (createUserDto.firstName || createUserDto.lastName) {
+      await this.prisma.userProfile.create({
+        data: {
+          userId: user.id,
+          firstName: createUserDto.firstName,
+          lastName: createUserDto.lastName,
+        },
+      });
+    }
+
+    const { password, ...result } = user;
+    
+    const payload = { email: user.email, sub: user.id, username: user.username };
+    
+    return {
+      user: result,
+      access_token: this.jwtService.sign(payload),
+      refresh_token: this.generateRefreshToken(payload),
+    };
+  }
+
+  async refreshToken(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur non trouvé');
+    }
+
+    const payload = { email: user.email, sub: user.id, username: user.username };
     
     return {
       access_token: this.jwtService.sign(payload),
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-        status: user.status,
-      },
+      refresh_token: this.generateRefreshToken(payload),
     };
   }
 
-  // 🌸 Inscription
-  async register(registerDto: RegisterDto) {
-    // Vérifier si l'utilisateur existe déjà
-    const existingUser = this.users.find(
-      u => u.username === registerDto.username || u.email === registerDto.email
-    );
-    if (existingUser) {
-      throw new UnauthorizedException('Utilisateur déjà existant');
-    }
+  async logout(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { isOnline: false, lastSeen: new Date() },
+    });
 
-    // Créer le nouvel utilisateur
-    const newUser: TempUser = {
-      id: (++this.userCounter).toString(),
-      username: registerDto.username,
-      email: registerDto.email,
-      password: registerDto.password, // En production, ce serait hashé
-      status: 'En ligne',
-      createdAt: new Date(),
-    };
-
-    this.users.push(newUser);
-
-    // Générer le token
-    const payload = { username: newUser.username, sub: newUser.id };
-    return {
-      access_token: this.jwtService.sign(payload),
-      user: {
-        id: newUser.id,
-        username: newUser.username,
-        email: newUser.email,
-        status: newUser.status,
-      },
-    };
+    return { message: 'Déconnexion réussie' };
   }
 
-  // 🌸 Récupérer un utilisateur par ID
-  async findById(id: string): Promise<any> {
-    const user = this.users.find(u => u.id === id);
-    if (user) {
-      const { password, ...result } = user;
-      return result;
-    }
-    return null;
-  }
-
-  // 🌸 Récupérer un utilisateur par nom d'utilisateur
-  async findByUsername(username: string): Promise<any> {
-    const user = this.users.find(u => u.username === username);
-    if (user) {
-      const { password, ...result } = user;
-      return result;
-    }
-    return null;
+  private generateRefreshToken(payload: any): string {
+    return this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_REFRESH_SECRET'),
+      expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '30d'),
+    });
   }
 }

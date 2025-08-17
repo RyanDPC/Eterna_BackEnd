@@ -5,14 +5,14 @@ import { PrismaClient } from '@prisma/client';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     super({
-      log: ['query', 'info', 'warn', 'error'],
+      log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
       errorFormat: 'pretty',
     });
   }
 
   async onModuleInit() {
     await this.$connect();
-    console.log('🗄️ Connexion à la base de données établie');
+    console.log('🗄️ Base de données connectée avec succès');
   }
 
   async onModuleDestroy() {
@@ -21,7 +21,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async cleanDatabase() {
-    if (process.env.NODE_ENV === 'test') {
+    if (process.env.NODE_ENV === 'development') {
       const tablenames = await this.$queryRaw<
         Array<{ tablename: string }>
       >`SELECT tablename FROM pg_tables WHERE schemaname='public'`;

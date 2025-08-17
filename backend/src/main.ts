@@ -1,25 +1,50 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
-import helmet from 'helmet';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as helmet from 'helmet';
 import * as compression from 'compression';
+import * as rateLimit from 'express-rate-limit';
+
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const configService = app.get(ConfigService);
 
   // Configuration de base
-  app.setGlobalPrefix('api');
-  app.enableCors({
-    origin: configService.get('CORS_ORIGIN', 'http://localhost:3000').split(','),
-    credentials: true,
-  });
+  const port = process.env.PORT || 3000;
+  const isProduction = process.env.NODE_ENV === 'production';
 
   // Sécurité
-  app.use(helmet());
-  app.use(compression());
+  if (process.env.HELMET_ENABLED !== 'false') {
+    app.use(helmet());
+  }
+
+  // Compression
+  if (process.env.COMPRESSION_ENABLED !== 'false') {
+    app.use(compression());
+  }
+
+  // Rate limiting
+  app.use(
+    rateLimit({
+      windowMs: parseInt(process.env.THROTTLE_TTL || '60') * 1000,
+      max: parseInt(process.env.THROTTLE_LIMIT || '100'),
+      message: 'Trop de requêtes, veuillez réessayer plus tard.',
+    }),
+  );
+
+  // CORS
+  const corsOrigins = process.env.CORS_ORIGIN?.split(',') || [
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ];
+  
+  app.enableCors({
+    origin: corsOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
 
   // Validation globale
   app.useGlobalPipes(
@@ -27,44 +52,43 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
-  // Configuration Swagger
-  const enableSwagger = configService.get('ENABLE_SWAGGER', 'true') === 'true';
-  if (enableSwagger) {
+  // Préfixe global de l'API
+  app.setGlobalPrefix('api');
+
+  // Swagger (uniquement en développement)
+  if (process.env.ENABLE_SWAGGER === 'true' && !isProduction) {
     const config = new DocumentBuilder()
-      .setTitle('ETERNA Backend API')
-      .setDescription('API complète pour l\'application ETERNA - Communication professionnelle')
-      .setVersion('1.0')
+      .setTitle(process.env.SWAGGER_TITLE || 'ETERNA Backend API')
+      .setDescription(
+        process.env.SWAGGER_DESCRIPTION || 'API complète pour l\'application ETERNA',
+      )
+      .setVersion(process.env.SWAGGER_VERSION || '1.0.0')
       .addBearerAuth()
-      .addTag('Authentification', 'Gestion de l\'authentification et des utilisateurs')
-      .addTag('Équipes', 'Gestion des équipes et des membres')
-      .addTag('Salons', 'Gestion des salons de chat')
-      .addTag('Messages', 'Gestion des messages et conversations')
-      .addTag('WebSocket', 'Communication temps réel')
+      .addTag('auth', 'Authentification')
+      .addTag('users', 'Gestion des utilisateurs')
+      .addTag('teams', 'Gestion des équipes')
+      .addTag('rooms', 'Gestion des salons')
+      .addTag('messages', 'Gestion des messages')
+      .addTag('websocket', 'Communication temps réel')
       .build();
 
     const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api/docs', app, document, {
-      swaggerOptions: {
-        persistAuthorization: true,
-      },
-    });
+    SwaggerModule.setup('docs', app, document);
   }
 
   // Démarrage du serveur
-  const port = configService.get('PORT', 8080);
   await app.listen(port);
-
-  console.log(`🚀 Serveur ETERNA démarré sur le port ${port}`);
-  console.log(`📊 Swagger UI: http://localhost:${port}/api/docs`);
-  console.log(`🌐 API: http://localhost:${port}/api`);
   
-  if (configService.get('NODE_ENV') === 'development') {
-    console.log(`🗄️ Base SQLite: dev.db`);
-    console.log(`🔌 WebSocket: ws://localhost:${configService.get('WS_PORT', 8081)}`);
-  }
+  console.log(`🚀 Serveur ETERNA démarré sur le port ${port}`);
+  console.log(`📚 Swagger: ${process.env.ENABLE_SWAGGER === 'true' ? `http://localhost:${port}/docs` : 'Désactivé'}`);
+  console.log(`🏥 Health check: http://localhost:${port}/api/health`);
+  console.log(`🌍 Mode: ${isProduction ? 'Production' : 'Développement'}`);
 }
 
 bootstrap().catch((error) => {

@@ -1,15 +1,23 @@
 import { Controller, Get } from '@nestjs/common';
-import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
+import { HealthCheck, HealthCheckService, PrismaHealthIndicator } from '@nestjs/terminus';
 
 @Controller('health')
 export class HealthController {
-  constructor(private health: HealthCheckService) {}
+  constructor(
+    private health: HealthCheckService,
+    private prisma: PrismaHealthIndicator,
+  ) {}
 
   @Get()
   @HealthCheck()
   check() {
     return this.health.check([
-      () => Promise.resolve({ eterna: { status: 'up', service: 'eterna-backend' } }),
+      () => this.prisma.pingCheck('database'),
     ]);
+  }
+
+  @Get('ping')
+  ping() {
+    return { message: 'pong', timestamp: new Date().toISOString() };
   }
 }

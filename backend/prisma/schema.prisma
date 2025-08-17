@@ -173,11 +173,11 @@ model Message {
 
   // Relations
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   replyTo     Message? @relation("MessageReplies", fields: [replyToId], references: [id])
   replies     Message[] @relation("MessageReplies")
   parent      Message? @relation("MessageThread", fields: [parentId], references: [id])
   thread      Message[] @relation("MessageThread")
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   pinnedIn    PinnedMessage[]
 
   @@index([roomId])
@@ -292,7 +292,7 @@ model AuditLog {
   action      String
   resource    String?
   resourceId  String?
-  details     Json?
+  details     String? // JSON stocké comme texte en SQLite
   ipAddress   String?
   userAgent   String?
   createdAt   DateTime    @default(now())
@@ -308,21 +308,6 @@ enum UserStatus {
   OFFLINE
 }
 
-enum RoomRole {
-  OWNER
-  ADMIN
-  MODERATOR
-  MEMBER
-}
-
-enum MessageType {
-  TEXT
-  IMAGE
-  FILE
-  SYSTEM
-  VOICE
-}
-
 enum PermissionType {
   CREATE_ROOM
   DELETE_ROOM
@@ -335,13 +320,3 @@ enum PermissionType {
   VIEW_AUDIT_LOGS
   MANAGE_PERMISSIONS
 }
-
-// 🌸 Index pour les performances
-@@index([email])
-@@index([username])
-@@index([roomId, createdAt])
-@@index([senderId, createdAt])
-@@index([userId, roomId])
-@@index([token])
-@@index([expiresAt])
-@@index([action, createdAt])
