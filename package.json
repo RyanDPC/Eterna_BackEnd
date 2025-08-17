@@ -5,9 +5,9 @@
   "author": "RyanDPC",
   "license": "MIT",
   "scripts": {
-    "build": "nest build",
+    "build": "npx nest build",
     "start": "npm run start:prod",
-    "start:dev": "nest start --watch",
+    "start:dev": "npx nest start --watch",
     "start:prod": "npm run db:init && node dist/src/main",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

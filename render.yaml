@@ -2,15 +2,15 @@ services:
   - type: web
     name: eterna-backend
     env: node
-    buildCommand: npm install
-    startCommand: npm run start:prod
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm run start:prod"
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 8080
+        value: "8080"
       - key: DATABASE_URL
-        value: file:./prisma/eterna.db
+        value: "file:./prisma/eterna.db"
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
