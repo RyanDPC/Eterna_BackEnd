@@ -748,7 +748,7 @@ export class SimpleOAuthController {
           ${success ? `
             <div class="instructions">
               <strong>🎯 Authentification réussie !</strong><br>
-              1. Cette fenêtre se fermera automatiquement dans <span id="countdown">10</span> secondes<br>
+              1. Cette fenêtre se fermera automatiquement dans <span id="countdown">3</span> secondes<br>
               2. Retournez dans Eterna<br>
               3. L'authentification se fera automatiquement
             </div>
@@ -773,7 +773,7 @@ export class SimpleOAuthController {
           
           ${success ? `
             <div class="auto-close">
-              ⏰ Cette fenêtre se fermera automatiquement dans 10 secondes
+              ⏰ Cette fenêtre se fermera automatiquement dans 3 secondes
             </div>
           ` : ''}
           
@@ -783,7 +783,7 @@ export class SimpleOAuthController {
             console.log('📋 [DEBUG] Données:', ${success && data ? JSON.stringify(data) : 'null'});
             
             // Variables globales
-            let countdown = ${success ? '10' : '0'};
+            let countdown = ${success ? '3' : '0'};
             let countdownInterval;
             let isAuthenticated = ${success};
             let autoCloseEnabled = ${success};
@@ -859,14 +859,14 @@ export class SimpleOAuthController {
               window.location.href = '/api/oauth/finalize/${provider}';
             }
             
-            // Gestion du compte à rebours (seulement si authentifié)
+            // Gestion du compte à rebours simplifié (seulement si authentifié)
             function startCountdown() {
               if (!isAuthenticated) {
                 console.log('⚠️ [DEBUG] Compte à rebours désactivé - pas encore authentifié');
                 return;
               }
               
-              console.log('⏰ [DEBUG] Démarrage du compte à rebours');
+              console.log('⏰ [DEBUG] Démarrage du compte à rebours simplifié');
               countdownInterval = setInterval(() => {
                 countdown--;
                 const countdownElement = document.getElementById('countdown');
@@ -881,33 +881,6 @@ export class SimpleOAuthController {
                   closeWindow();
                 }
               }, 1000);
-            }
-            
-            // Vérifier périodiquement si l'authentification est terminée
-            function checkAuthenticationStatus() {
-              console.log('🔍 [DEBUG] Vérification du statut d\'authentification...');
-              
-              // Si on a des données, on considère que l'authentification est réussie
-              if (${success && data ? 'true' : 'false'}) {
-                console.log('✅ [DEBUG] Authentification confirmée, activation de la fermeture auto');
-                isAuthenticated = true;
-                autoCloseEnabled = true;
-                
-                // Démarrer le compte à rebours
-                startCountdown();
-                
-                // Redirection automatique après 5 secondes
-                setTimeout(() => {
-                  console.log('🔄 [DEBUG] Redirection automatique vers la finalisation');
-                  redirectToFinalize();
-                }, 5000);
-                
-                return;
-              }
-              
-              // Si pas encore authentifié, continuer à vérifier
-              console.log('⏳ [DEBUG] Pas encore authentifié, nouvelle vérification dans 2 secondes');
-              setTimeout(checkAuthenticationStatus, 2000);
             }
             
             // Envoyer les données à l'application parent si elle existe
@@ -930,19 +903,21 @@ export class SimpleOAuthController {
             // Démarrer le signal de "vie" immédiatement
             startHeartbeat();
             
-            // Démarrer la vérification d'authentification
-            if (!isAuthenticated) {
-              console.log('🔍 [DEBUG] Démarrage de la vérification d\'authentification');
-              setTimeout(checkAuthenticationStatus, 2000);
-            } else {
-              console.log('✅ [DEBUG] Déjà authentifié, démarrage du compte à rebours');
+            // Logique simplifiée : si authentifié, démarrer le compte à rebours et la redirection
+            if (isAuthenticated) {
+              console.log('✅ [DEBUG] Déjà authentifié, démarrage du processus automatique');
+              
+              // Démarrer le compte à rebours de 3 secondes
               startCountdown();
               
-              // Redirection automatique après 5 secondes
+              // Redirection automatique après 2 secondes (avant la fermeture)
               setTimeout(() => {
                 console.log('🔄 [DEBUG] Redirection automatique vers la finalisation');
                 redirectToFinalize();
-              }, 5000);
+              }, 2000);
+              
+            } else {
+              console.log('⏳ [DEBUG] Pas encore authentifié, attente...');
             }
             
             // Logs de debug
@@ -959,13 +934,13 @@ export class SimpleOAuthController {
               console.log('✅ [DEBUG] Authentification ${provider} réussie, processus automatique en cours...');
             }
             
-            // Fallback de sécurité : fermeture forcée après 30 secondes maximum
+            // Fallback de sécurité : fermeture forcée après 10 secondes maximum
             setTimeout(() => {
-              console.log('⚠️ [DEBUG] Fallback de sécurité: Fermeture forcée après 30 secondes');
+              console.log('⚠️ [DEBUG] Fallback de sécurité: Fermeture forcée après 10 secondes');
               if (window.opener) {
                 window.close();
               }
-            }, 30000);
+            }, 10000);
             
             // Nettoyer les intervalles lors de la fermeture de la page
             window.addEventListener('beforeunload', () => {
