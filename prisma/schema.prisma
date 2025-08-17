@@ -16,11 +16,19 @@ model User {
   id        String   @id @default(cuid())
   email     String   @unique
   username  String   @unique
-  password  String
+  password  String?  // Peut être null pour les comptes OAuth
   avatar    String?
   bio       String?
   isOnline  Boolean  @default(false)
   lastSeen  DateTime @default(now())
+  
+  // 🔐 Authentification et vérification
+  isEmailVerified Boolean  @default(false)
+  emailVerificationCode String?
+  emailVerificationExpiry DateTime?
+  resetPasswordToken String?
+  resetPasswordExpiry DateTime?
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -34,11 +42,15 @@ model User {
   sentInvitations Invitation[] @relation("InvitationSender")
   voiceConnections VoiceConnection[]
   permissions UserPermission[]
+  socialAccounts SocialAccount[]
+  refreshTokens RefreshToken[]
 
   @@index([email])
   @@index([username])
   @@index([isOnline])
   @@index([lastSeen])
+  @@index([emailVerificationCode])
+  @@index([resetPasswordToken])
   @@map("users")
 }
 
@@ -305,6 +317,50 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// 🔐 AUTHENTIFICATION AVANCÉE
+
+// Modèle pour les comptes sociaux (OAuth)
+model SocialAccount {
+  id         String @id @default(cuid())
+  userId     String
+  provider   String // "google", "apple", "steam"
+  providerId String // ID fourni par le provider
+  email      String?
+  name       String?
+  avatar     String?
+  accessToken String?
+  refreshToken String?
+  expiresAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@unique([provider, userId])
+  @@index([provider])
+  @@map("social_accounts")
+}
+
+// Modèle pour les refresh tokens
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  isRevoked Boolean  @default(false)
+  deviceInfo String? // JSON avec info sur l'appareil
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
 // 🌸 Énumérations
 // SQLite ne supporte pas les enums, on utilise des strings
 // enum UserStatus {
@@ -326,4 +382,11 @@ model AuditLog {
 //   MANAGE_VOICE
 //   VIEW_AUDIT_LOGS
 //   MANAGE_PERMISSIONS
+// }
+
+// SQLite ne supporte pas les enums, on utilise des strings
+// enum SocialProvider {
+//   GOOGLE
+//   APPLE
+//   STEAM
 // }

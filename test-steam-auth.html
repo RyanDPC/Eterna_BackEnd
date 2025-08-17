@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Steam OAuth - ETERNA</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #1b2838 0%, #2a475e 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { text-align: center; margin-bottom: 30px; }
+        .test-section {
+            background: rgba(102, 192, 244, 0.2);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            border-left: 4px solid #66c0f4;
+        }
+        .btn {
+            display: inline-block;
+            background: #66c0f4;
+            color: #1b2838;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            margin: 10px 0;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #4c9bbf;
+        }
+        .config {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .success { background: rgba(76, 175, 80, 0.3); }
+        .error { background: rgba(244, 67, 54, 0.3); }
+        .info { background: rgba(102, 192, 244, 0.3); }
+        .steam-logo {
+            width: 24px;
+            height: 24px;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Test Steam OAuth/OpenID - ETERNA</h1>
+        
+        <div class="test-section">
+            <h3>📋 Configuration Steam</h3>
+            <div class="config" id="config">
+                Chargement de la configuration Steam...
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>🧪 Tests d'Authentification Steam</h3>
+            <p>Testez l'authentification Steam OpenID :</p>
+            
+            <a href="#" class="btn" onclick="testSteamConfig()">⚙️ Tester la Configuration</a>
+            <a href="#" class="btn" onclick="testSteamApi()">🔌 Tester l'API Steam</a>
+            <a href="#" class="btn" onclick="startSteamAuth()">🎮 Se Connecter avec Steam</a>
+            
+            <div id="status" class="status info">
+                Prêt pour les tests Steam
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>📖 Informations Steam</h3>
+            <ul>
+                <li><strong>Steam API Key :</strong> Configurée (***A40E)</li>
+                <li><strong>Domain :</strong> eterna-backend-ezru.onrender.com</li>
+                <li><strong>Return URL :</strong> /api/auth/steam/return</li>
+                <li><strong>Realm :</strong> https://eterna-backend-ezru.onrender.com</li>
+                <li><strong>OpenID Provider :</strong> https://steamcommunity.com/openid</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>🌐 URLs de Test</h3>
+            <ul>
+                <li><strong>Configuration :</strong> <code>/api/auth/steam/config</code></li>
+                <li><strong>Test API :</strong> <code>/api/auth/steam/test</code></li>
+                <li><strong>Authentification :</strong> <code>/api/auth/steam</code></li>
+                <li><strong>Retour :</strong> <code>/api/auth/steam/return</code></li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>🔍 Données Récupérées</h3>
+            <p>Après authentification, vous obtiendrez :</p>
+            <ul>
+                <li>✅ <strong>Steam ID</strong> - Identifiant unique (64-bit)</li>
+                <li>✅ <strong>Pseudo Steam</strong> - Nom d'affichage</li>
+                <li>✅ <strong>Avatar</strong> - Image de profil (3 tailles)</li>
+                <li>✅ <strong>Profil URL</strong> - Lien vers le profil Steam</li>
+                <li>✅ <strong>Nom réel</strong> - Si public</li>
+                <li>✅ <strong>Localisation</strong> - Pays/état si public</li>
+                <li>✅ <strong>Date de création</strong> - Du compte Steam</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api/auth';
+        
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        async function testSteamConfig() {
+            updateStatus('🔄 Test de la configuration Steam...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/steam/config`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('config').innerHTML = `
+                        <strong>✅ Configuration Steam OAuth :</strong><br>
+                        API Key: ${data.config.api_key}<br>
+                        Return URL: ${data.config.return_url}<br>
+                        Realm: ${data.config.realm}<br>
+                        OpenID Provider: ${data.config.openid_provider}<br>
+                        Auth URL: ${data.config.auth_url}
+                    `;
+                    updateStatus('✅ Configuration Steam chargée avec succès !', 'success');
+                } else {
+                    throw new Error(data.error || 'Configuration invalide');
+                }
+            } catch (error) {
+                updateStatus(`❌ Erreur : ${error.message}`, 'error');
+                document.getElementById('config').innerHTML = `
+                    <strong>❌ Erreur de configuration Steam :</strong><br>
+                    ${error.message}<br><br>
+                    <strong>Solution :</strong> Vérifiez que le serveur est démarré et la Steam API Key configurée
+                `;
+            }
+        }
+
+        async function testSteamApi() {
+            updateStatus('🔄 Test de l\'API Steam...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/steam/test`);
+                const data = await response.json();
+                
+                if (data.success && data.data.api_connected) {
+                    updateStatus('✅ API Steam opérationnelle !', 'success');
+                } else {
+                    updateStatus('❌ API Steam non accessible', 'error');
+                }
+            } catch (error) {
+                updateStatus(`❌ Erreur API Steam : ${error.message}`, 'error');
+            }
+        }
+
+        function startSteamAuth() {
+            updateStatus('🔄 Redirection vers Steam...', 'info');
+            window.location.href = `${API_BASE}/steam`;
+        }
+
+        // Vérifier si on revient du callback Steam
+        function checkCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // Steam OpenID utilise ces paramètres
+            const openidMode = urlParams.get('openid.mode');
+            const openidIdentity = urlParams.get('openid.identity');
+            
+            if (openidMode === 'cancel') {
+                updateStatus('❌ Authentification Steam annulée', 'error');
+            } else if (openidMode === 'id_res' && openidIdentity) {
+                updateStatus('✅ Retour de Steam détecté ! Traitement...', 'success');
+            }
+        }
+
+        // Charger les tests au démarrage
+        window.onload = function() {
+            testSteamConfig();
+            checkCallback();
+        };
+    </script>
+</body>
+</html>
