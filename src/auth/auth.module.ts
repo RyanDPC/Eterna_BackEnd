@@ -7,20 +7,18 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { SocialAuthService } from './social-auth.service';
 import { RefreshTokenService } from './refresh-token.service';
-import { GoogleOAuthService } from './google-oauth.service';
+// import { GoogleOAuthService } from './google-oauth.service'; // Temporairement désactivé - fichier client-secret.json manquant
 import { SteamOAuthService } from './steam-oauth.service';
 
 // Controllers
 import { AuthController } from './auth.controller';
-import { GoogleOAuthController } from './google-oauth.controller';
+// import { GoogleOAuthController } from './google-oauth.controller'; // Temporairement désactivé - fichier client-secret.json manquant
 import { SteamOAuthController } from './steam-oauth.controller';
 
 // Strategies
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
-// import { AppleStrategy } from './strategies/apple.strategy'; // Temporairement désactivé
-// import { SteamStrategy } from './strategies/steam.strategy'; // Sera activé après configuration
 
 // Guards
 import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
@@ -49,21 +47,19 @@ import { EmailModule } from '../email/email.module';
     }),
     ConfigModule,
   ],
-  controllers: [AuthController, GoogleOAuthController, SteamOAuthController],
+  controllers: [AuthController, SteamOAuthController], // GoogleOAuthController temporairement désactivé
   providers: [
     // Services
     AuthService,
     SocialAuthService,
     RefreshTokenService,
-    GoogleOAuthService,
+    // GoogleOAuthService, // Temporairement désactivé - fichier client-secret.json manquant
     SteamOAuthService,
     
     // Strategies
     JwtStrategy,
     LocalStrategy,
     GoogleStrategy,
-    // AppleStrategy, // Temporairement désactivé
-    // SteamStrategy, // Sera activé après configuration
     
     // Guards
     AuthRateLimitGuard,
@@ -72,7 +68,7 @@ import { EmailModule } from '../email/email.module';
     AuthService,
     SocialAuthService,
     RefreshTokenService,
-    GoogleOAuthService,
+    // GoogleOAuthService, // Temporairement désactivé - fichier client-secret.json manquant
     SteamOAuthService,
     JwtModule,
   ],

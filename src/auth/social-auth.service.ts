@@ -3,9 +3,23 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { GoogleProfile } from './strategies/google.strategy';
-import { AppleProfile } from './strategies/apple.strategy';
-import { SteamProfile } from './strategies/steam.strategy';
 import * as bcrypt from 'bcrypt';
+
+// Définition des types de profils sociaux
+export interface AppleProfile {
+  id: string;
+  email: string;
+  name: string;
+  picture?: string;
+}
+
+export interface SteamProfile {
+  id: string;
+  username: string;
+  displayName: string;
+  avatar?: string;
+  profileUrl?: string;
+}
 
 type SocialProfile = GoogleProfile | AppleProfile | SteamProfile;
 
