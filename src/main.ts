@@ -10,6 +10,9 @@ const rateLimit = require('express-rate-limit');
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Configuration du trust proxy pour Render
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   // Configuration globale
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({
@@ -38,6 +41,8 @@ async function bootstrap() {
     message: 'Trop de requêtes, veuillez réessayer plus tard',
     standardHeaders: true,
     legacyHeaders: false,
+    // Configuration pour les proxies comme Render
+    trustProxy: true,
   }));
 
   // CORS
