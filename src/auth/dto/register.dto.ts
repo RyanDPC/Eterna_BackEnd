@@ -12,6 +12,10 @@ export class RegisterDto {
   @MinLength(6)
   password: string;
 
+  @IsString()
+  @MinLength(6)
+  confirmPassword: string;
+
   @IsOptional()
   @IsString()
   avatar?: string;
