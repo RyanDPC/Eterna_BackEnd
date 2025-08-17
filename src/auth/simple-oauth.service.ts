@@ -373,7 +373,7 @@ export class SimpleOAuthService {
   }
 
   /**
-   * Récupère les informations utilisateur Google
+   * Récupère les informations utilisateur Google avec gestion d'erreurs robuste
    */
   private async getGoogleUserInfo(accessToken: string): Promise<any> {
     try {
@@ -387,7 +387,8 @@ export class SimpleOAuthService {
         });
       }
 
-      const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      // Récupérer les informations de base
+      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
@@ -395,34 +396,62 @@ export class SimpleOAuthService {
 
       if (this.DEBUG_MODE) {
         this.logger.debug('📡 [DEBUG] Réponse de l\'API UserInfo Google:', {
-          status: response.status,
-          statusText: response.statusText,
-          ok: response.ok
+          status: userInfoResponse.status,
+          statusText: userInfoResponse.statusText,
+          ok: userInfoResponse.ok
         });
       }
 
-      if (!response.ok) {
-        const errorText = await response.text();
+      if (!userInfoResponse.ok) {
+        const errorText = await userInfoResponse.text();
         this.logger.error('❌ [DEBUG] Erreur API UserInfo Google:', {
-          status: response.status,
-          statusText: response.statusText,
+          status: userInfoResponse.status,
+          statusText: userInfoResponse.statusText,
           errorText: errorText
         });
-        throw new Error(`Erreur lors de la récupération des informations utilisateur: ${response.statusText} - ${errorText}`);
+        throw new Error(`Erreur lors de la récupération des informations utilisateur: ${userInfoResponse.statusText} - ${errorText}`);
       }
 
-      const result = await response.json();
+      const userInfo = await userInfoResponse.json();
       
+      // Récupérer des informations supplémentaires si possible
+      let additionalInfo = {};
+      try {
+        const peopleResponse = await fetch('https://people.googleapis.com/v1/people/me?personFields=names,emailAddresses,photos,locales', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+          },
+        });
+
+        if (peopleResponse.ok) {
+          const peopleData = await peopleResponse.json();
+          additionalInfo = {
+            given_name: peopleData.names?.[0]?.givenName,
+            family_name: peopleData.names?.[0]?.familyName,
+            locale: peopleData.locales?.[0]?.value
+          };
+        }
+      } catch (peopleError) {
+        this.logger.warn('⚠️ [DEBUG] Impossible de récupérer les informations supplémentaires Google People:', peopleError.message);
+      }
+
       if (this.DEBUG_MODE) {
         this.logger.debug('✅ [DEBUG] Récupération infos Google réussie:', {
-          userId: result.id,
-          email: result.email,
-          name: result.name,
-          hasPicture: !!result.picture
+          userId: userInfo.id,
+          email: userInfo.email,
+          name: userInfo.name,
+          hasPicture: !!userInfo.picture,
+          verifiedEmail: userInfo.verified_email,
+          additionalInfo: Object.keys(additionalInfo)
         });
       }
 
-      return result;
+      // Retourner les données enrichies
+      return {
+        ...userInfo,
+        ...additionalInfo
+      };
+
     } catch (error) {
       this.logger.error('❌ [DEBUG] Erreur lors de la récupération des infos utilisateur Google:', error);
       this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
@@ -599,7 +628,7 @@ export class SimpleOAuthService {
   }
 
   /**
-   * Récupère les informations utilisateur Steam
+   * Récupère les informations utilisateur Steam avec gestion d'erreurs robuste
    */
   private async getSteamUserInfo(steamId: string): Promise<any> {
     try {
@@ -617,59 +646,78 @@ export class SimpleOAuthService {
         throw new Error('Clé API Steam manquante');
       }
 
-      const apiUrl = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${this.config.steam.apiKey}&steamids=${steamId}`;
+      // Récupérer les informations de base du joueur
+      const playerSummariesUrl = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${this.config.steam.apiKey}&steamids=${steamId}`;
       
       if (this.DEBUG_MODE) {
-        this.logger.debug('🔗 [DEBUG] URL API Steam:', {
+        this.logger.debug('🔗 [DEBUG] URL API Steam Player Summaries:', {
           baseUrl: 'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/',
           hasKey: !!this.config.steam.apiKey,
           steamId: steamId
         });
       }
 
-      const response = await fetch(apiUrl);
+      const playerResponse = await fetch(playerSummariesUrl);
       
       if (this.DEBUG_MODE) {
-        this.logger.debug('📡 [DEBUG] Réponse de l\'API Steam:', {
-          status: response.status,
-          statusText: response.statusText,
-          ok: response.ok
+        this.logger.debug('📡 [DEBUG] Réponse de l\'API Steam Player Summaries:', {
+          status: playerResponse.status,
+          statusText: playerResponse.statusText,
+          ok: playerResponse.ok
         });
       }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.error('❌ [DEBUG] Erreur API Steam:', {
-          status: response.status,
-          statusText: response.statusText,
+      if (!playerResponse.ok) {
+        const errorText = await playerResponse.text();
+        this.logger.error('❌ [DEBUG] Erreur API Steam Player Summaries:', {
+          status: playerResponse.status,
+          statusText: playerResponse.statusText,
           errorText: errorText
         });
-        throw new Error(`Erreur lors de la récupération des informations Steam: ${response.statusText} - ${errorText}`);
+        throw new Error(`Erreur lors de la récupération des informations Steam: ${playerResponse.statusText} - ${errorText}`);
       }
 
-      const data = await response.json();
+      const playerData = await playerResponse.json();
       
       if (this.DEBUG_MODE) {
-        this.logger.debug('📊 [DEBUG] Réponse brute API Steam:', {
-          hasResponse: !!data.response,
-          hasPlayers: !!data.response?.players,
-          playersCount: data.response?.players?.length || 0
+        this.logger.debug('📊 [DEBUG] Réponse brute API Steam Player Summaries:', {
+          hasResponse: !!playerData.response,
+          hasPlayers: !!playerData.response?.players,
+          playersCount: playerData.response?.players?.length || 0
         });
       }
 
-      if (!data.response?.players || data.response.players.length === 0) {
+      if (!playerData.response?.players || playerData.response.players.length === 0) {
         this.logger.error('❌ [DEBUG] Aucun joueur trouvé dans la réponse Steam');
         throw new Error('Aucun joueur trouvé');
       }
 
-      const player = data.response.players[0];
+      const player = playerData.response.players[0];
+      
+      // Récupérer des informations supplémentaires si possible
+      let additionalInfo: { steamLevel?: number } = {};
+      try {
+        // Récupérer les badges du joueur (niveau Steam)
+        const badgesUrl = `https://api.steampowered.com/IPlayerService/GetBadges/v1/?key=${this.config.steam.apiKey}&steamid=${steamId}`;
+        const badgesResponse = await fetch(badgesUrl);
+        
+        if (badgesResponse.ok) {
+          const badgesData = await badgesResponse.json();
+          if (badgesData.response?.player_level) {
+            additionalInfo.steamLevel = badgesData.response.player_level;
+          }
+        }
+      } catch (badgesError) {
+        this.logger.warn('⚠️ [DEBUG] Impossible de récupérer les badges Steam:', badgesError.message);
+      }
       
       if (this.DEBUG_MODE) {
         this.logger.debug('👤 [DEBUG] Données joueur Steam extraites:', {
           steamId: player.steamid,
           username: player.personaname,
           hasAvatar: !!player.avatarfull,
-          hasProfileUrl: !!player.profileurl
+          hasProfileUrl: !!player.profileurl,
+          additionalInfo: Object.keys(additionalInfo)
         });
       }
 
@@ -681,7 +729,8 @@ export class SimpleOAuthService {
         profileUrl: player.profileurl,
         realName: player.realname || null,
         country: player.loccountrycode || null,
-        status: player.personastate
+        status: player.personastate,
+        ...additionalInfo
       };
 
       this.logger.log(`✅ [DEBUG] Récupération infos Steam réussie pour: ${result.username}`);

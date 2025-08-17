@@ -112,6 +112,7 @@ export class SimpleOAuthController {
   /**
    * GET /oauth/google/callback
    * Traite le retour de Google OAuth
+   * CORRIGÉ : Plus d'authentification prématurée
    */
   @Get('google/callback')
   async googleCallback(
@@ -138,15 +139,25 @@ export class SimpleOAuthController {
 
       if (error) {
         this.logger.error(`❌ [DEBUG] Erreur Google OAuth reçue: ${error}`);
-        return this.renderCallbackPage(res, 'google', false, `Erreur: ${error}`);
+        return this.renderCallbackPage(res, 'google', false, {
+          message: `Erreur Google OAuth: ${error}`,
+          error: error
+        });
       }
 
+      // VÉRIFICATION CRITIQUE : Attendre que l'utilisateur clique réellement sur "Se connecter"
       if (!code) {
-        this.logger.error('❌ [DEBUG] Code d\'autorisation manquant dans le callback Google');
-        return this.renderCallbackPage(res, 'google', false, 'Code d\'autorisation manquant');
+        this.logger.log('⚠️ [DEBUG] Google OAuth - utilisateur n\'a pas encore cliqué sur Se connecter');
+        
+        // Afficher une page d'attente au lieu de "Connexion réussie"
+        return this.renderCallbackPage(res, 'google', false, {
+          message: 'En attente de confirmation Google... Veuillez cliquer sur "Se connecter" dans la popup Google',
+          error: 'Authentification non confirmée'
+        });
       }
 
-      this.logger.log('✅ [DEBUG] Code Google reçu, traitement en cours...');
+      // L'utilisateur a cliqué sur "Se connecter" - valider l'authentification
+      this.logger.log('✅ [DEBUG] Google OAuth - utilisateur a cliqué sur Se connecter, validation en cours...');
 
       const result = await this.simpleOAuthService.processGoogleCallback(code);
 
@@ -162,29 +173,42 @@ export class SimpleOAuthController {
       if (result.success) {
         this.logger.log(`✅ [DEBUG] Authentification Google réussie pour: ${result.data.user.email}`);
         
-        // Stocker les données en cookies pour la finalisation
-        res.cookie(`oauth_google_data`, JSON.stringify(result.data), {
-          httpOnly: false,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 5 * 60 * 1000 // 5 minutes
-        });
-
-        if (this.DEBUG_MODE) {
-          this.logger.debug('🍪 [DEBUG] Cookie Google OAuth créé avec succès');
+        // Utiliser la nouvelle méthode de création de cookies robuste
+        const cookieName = 'oauth_google_data';
+        const cookieCreated = this.createOAuthCookie(res, cookieName, result.data, 'google');
+        
+        if (!cookieCreated) {
+          this.logger.error('❌ [DEBUG] Échec de la création du cookie Google OAuth');
+          return this.renderCallbackPage(res, 'google', false, {
+            message: 'Erreur lors de la création de la session',
+            error: 'Impossible de créer la session OAuth'
+          });
         }
 
-        return this.renderCallbackPage(res, 'google', true, 'Authentification Google réussie ! Redirection automatique...', result.data);
+        // Afficher la page de succès avec les VRAIES données Google
+        return this.renderCallbackPage(res, 'google', true, {
+          message: `Connexion réussie avec ${result.data.user.name || 'Google'}`,
+          data: result.data
+        });
+        
       } else {
-        this.logger.error(`❌ [DEBUG] Échec de l'authentification Google: ${result.error}`);
-        return this.renderCallbackPage(res, 'google', false, `Échec: ${result.error}`);
+        this.logger.error(`❌ [DEBUG] Authentification Google échouée: ${result.error}`);
+        
+        // Afficher la page d'erreur
+        return this.renderCallbackPage(res, 'google', false, {
+          message: `Échec de l'authentification Google: ${result.error}`,
+          error: result.error
+        });
       }
 
     } catch (error) {
       this.logger.error('❌ [DEBUG] Erreur lors du traitement du callback Google:', error);
       this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
       
-      return this.renderCallbackPage(res, 'google', false, `Erreur: ${error.message}`);
+      return this.renderCallbackPage(res, 'google', false, {
+        message: `Erreur lors de l'authentification Google: ${error.message}`,
+        error: error.message
+      });
     }
   }
 
@@ -239,18 +263,17 @@ export class SimpleOAuthController {
       if (result.success && result.data) {
         this.logger.log(`✅ [DEBUG] Authentification Steam réussie pour: ${result.data.user?.displayName || 'Utilisateur Steam'}`);
         
-        // Créer le cookie avec les VRAIES données Steam
+        // Utiliser la nouvelle méthode de création de cookies robuste
         const cookieName = 'oauth_steam_data';
-        const cookieValue = JSON.stringify(result.data);
+        const cookieCreated = this.createOAuthCookie(res, cookieName, result.data, 'steam');
         
-        res.cookie(cookieName, cookieValue, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 5 * 60 * 1000 // 5 minutes
-        });
-        
-        this.logger.log('🍪 [DEBUG] Cookie Steam OAuth créé avec succès');
+        if (!cookieCreated) {
+          this.logger.error('❌ [DEBUG] Échec de la création du cookie Steam OAuth');
+          return this.renderCallbackPage(res, 'steam', false, {
+            message: 'Erreur lors de la création de la session',
+            error: 'Impossible de créer la session OAuth'
+          });
+        }
         
         // Afficher la page de succès avec les VRAIES données
         return this.renderCallbackPage(res, 'steam', true, {
@@ -429,50 +452,29 @@ export class SimpleOAuthController {
     try {
       this.logger.log(`👤 [DEBUG] Récupération des données utilisateur ${provider}`);
       
-      // Récupérer les données depuis les cookies
+      // Utiliser la nouvelle méthode de validation des cookies robuste
       const cookieName = `oauth_${provider}_data`;
-      const oauthDataCookie = req.cookies[cookieName];
+      const cookieValidation = this.validateOAuthCookie(req, cookieName, provider);
       
-      if (this.DEBUG_MODE) {
-        this.logger.debug('🍪 [DEBUG] Cookies disponibles:', {
-          provider: provider,
-          cookieName: cookieName,
-          hasCookie: !!oauthDataCookie,
-          allCookies: Object.keys(req.cookies)
-        });
-      }
-      
-      if (!oauthDataCookie) {
-        this.logger.error(`❌ [DEBUG] Données OAuth ${provider} non trouvées dans les cookies`);
+      if (!cookieValidation.isValid) {
+        this.logger.error(`❌ [DEBUG] Validation du cookie OAuth ${provider} échouée: ${cookieValidation.error}`);
         return res.status(404).json({
           success: false,
-          error: 'Données OAuth non trouvées',
+          error: cookieValidation.error || 'Données OAuth non trouvées',
           provider: provider,
           availableCookies: Object.keys(req.cookies)
         });
       }
 
-      let oauthData;
-      try {
-        oauthData = JSON.parse(oauthDataCookie);
-        
-        if (this.DEBUG_MODE) {
-          this.logger.debug('📊 [DEBUG] Données OAuth parsées:', {
-            provider: provider,
-            hasUser: !!oauthData.user,
-            hasTokens: !!oauthData.tokens,
-            userKeys: oauthData.user ? Object.keys(oauthData.user) : [],
-            dataSize: JSON.stringify(oauthData).length
-          });
-        }
-        
-      } catch (error) {
-        this.logger.error(`❌ [DEBUG] Erreur lors du parsing des données OAuth ${provider}:`, error);
-        return res.status(500).json({
-          success: false,
-          error: 'Données OAuth invalides',
+      const oauthData = cookieValidation.data;
+      
+      if (this.DEBUG_MODE) {
+        this.logger.debug('📊 [DEBUG] Données OAuth validées:', {
           provider: provider,
-          parseError: error.message
+          hasUser: !!oauthData.user,
+          hasTokens: !!oauthData.tokens,
+          userKeys: oauthData.user ? Object.keys(oauthData.user) : [],
+          dataSize: JSON.stringify(oauthData).length
         });
       }
 
@@ -1367,5 +1369,146 @@ export class SimpleOAuthController {
     
     res.setHeader('Content-Type', 'text/html');
     return res.send(html);
+  }
+
+  /**
+   * Création robuste de cookies OAuth avec gestion d'erreurs
+   */
+  private createOAuthCookie(
+    res: Response,
+    cookieName: string,
+    cookieValue: any,
+    provider: 'google' | 'steam'
+  ): boolean {
+    try {
+      if (this.DEBUG_MODE) {
+        this.logger.debug('🍪 [DEBUG] Création du cookie OAuth:', {
+          provider: provider,
+          cookieName: cookieName,
+          cookieValueLength: JSON.stringify(cookieValue).length,
+          cookieValueStart: JSON.stringify(cookieValue).substring(0, 100) + '...'
+        });
+      }
+
+      // Configuration robuste du cookie
+      const cookieOptions = {
+        httpOnly: false, // Permettre l'accès depuis le frontend
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax' as const,
+        maxAge: 5 * 60 * 1000, // 5 minutes
+        path: '/', // S'assurer que le cookie est accessible partout
+        domain: undefined, // Utiliser le domaine par défaut
+        expires: new Date(Date.now() + 5 * 60 * 1000) // Expiration explicite
+      };
+
+      // Créer le cookie
+      res.cookie(cookieName, JSON.stringify(cookieValue), cookieOptions);
+
+      if (this.DEBUG_MODE) {
+        this.logger.debug('🍪 [DEBUG] Cookie OAuth créé avec succès:', {
+          provider: provider,
+          cookieName: cookieName,
+          options: cookieOptions
+        });
+      }
+
+      return true;
+    } catch (error) {
+      this.logger.error(`❌ [DEBUG] Erreur lors de la création du cookie OAuth ${provider}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Vérification robuste des cookies OAuth
+   */
+  private validateOAuthCookie(
+    req: any,
+    cookieName: string,
+    provider: 'google' | 'steam'
+  ): { isValid: boolean; data: any; error?: string } {
+    try {
+      if (this.DEBUG_MODE) {
+        this.logger.debug('🔍 [DEBUG] Validation du cookie OAuth:', {
+          provider: provider,
+          cookieName: cookieName,
+          hasCookie: !!req.cookies[cookieName],
+          allCookies: Object.keys(req.cookies)
+        });
+      }
+
+      const cookieValue = req.cookies[cookieName];
+      
+      if (!cookieValue) {
+        return {
+          isValid: false,
+          data: null,
+          error: `Cookie OAuth ${provider} non trouvé`
+        };
+      }
+
+      // Parser et valider le cookie
+      let parsedData;
+      try {
+        parsedData = JSON.parse(cookieValue);
+      } catch (parseError) {
+        this.logger.error(`❌ [DEBUG] Erreur de parsing du cookie OAuth ${provider}:`, parseError);
+        return {
+          isValid: false,
+          data: null,
+          error: `Cookie OAuth ${provider} invalide (JSON corrompu)`
+        };
+      }
+
+      // Validation des données
+      if (!parsedData || typeof parsedData !== 'object') {
+        return {
+          isValid: false,
+          data: null,
+          error: `Cookie OAuth ${provider} invalide (structure incorrecte)`
+        };
+      }
+
+      // Validation spécifique selon le provider
+      if (provider === 'google') {
+        if (!parsedData.user || !parsedData.user.email || !parsedData.tokens) {
+          return {
+            isValid: false,
+            data: null,
+            error: `Cookie OAuth Google invalide (données utilisateur manquantes)`
+          };
+        }
+      } else if (provider === 'steam') {
+        if (!parsedData.user || !parsedData.user.steamId || !parsedData.tokens) {
+          return {
+            isValid: false,
+            data: null,
+            error: `Cookie OAuth Steam invalide (données utilisateur manquantes)`
+          };
+        }
+      }
+
+      if (this.DEBUG_MODE) {
+        this.logger.debug('✅ [DEBUG] Cookie OAuth validé avec succès:', {
+          provider: provider,
+          cookieName: cookieName,
+          hasUser: !!parsedData.user,
+          hasTokens: !!parsedData.tokens
+        });
+      }
+
+      return {
+        isValid: true,
+        data: parsedData
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ [DEBUG] Erreur lors de la validation du cookie OAuth ${provider}:`, error);
+      return {
+        isValid: false,
+        data: null,
+        error: `Erreur de validation: ${error.message}`
+      };
+    }
   }
 }
