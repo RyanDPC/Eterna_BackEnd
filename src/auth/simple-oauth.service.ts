@@ -43,12 +43,12 @@ export class SimpleOAuthService {
         this.config = {
           google: {
             clientId: googleConfig.client_id,
-            redirectUri: googleConfig.redirect_uris[0],
+            redirectUri: 'https://eterna-backend-ezru.onrender.com/api/oauth/google/callback',
             scope: 'email profile'
           },
           steam: {
             apiKey: this.configService.get('STEAM_API_KEY') || '',
-            redirectUri: this.configService.get('STEAM_RETURN_URL') || ''
+            redirectUri: 'https://eterna-backend-ezru.onrender.com/api/oauth/steam/callback'
           }
         };
         

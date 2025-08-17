@@ -12,6 +12,7 @@ import { SimpleOAuthService } from './simple-oauth.service';
 // Controllers
 import { AuthController } from './auth.controller';
 import { SimpleOAuthController } from './simple-oauth.controller';
+import { AuthOAuthAliasController } from './auth-oauth-alias.controller';
 
 // Strategies
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -44,7 +45,7 @@ import { EmailModule } from '../email/email.module';
     }),
     ConfigModule,
   ],
-  controllers: [AuthController, SimpleOAuthController],
+  controllers: [AuthController, SimpleOAuthController, AuthOAuthAliasController],
   providers: [
     // Services
     AuthService,
