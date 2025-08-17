@@ -200,18 +200,46 @@ export class SimpleOAuthService {
    * Vérifie l'authentification Steam OpenID
    */
   private async verifySteamAuthentication(query: any): Promise<string> {
-    // Implémentation simplifiée de la vérification Steam OpenID
-    // En production, vous devriez implémenter la vérification complète
-    if (query['openid.mode'] === 'id_res') {
+    try {
+      // Vérifier que c'est bien un retour d'authentification
+      if (query['openid.mode'] !== 'id_res') {
+        throw new Error('Mode OpenID invalide');
+      }
+
+      // Vérifier la présence des paramètres requis
+      if (!query['openid.sig'] || !query['openid.assoc_handle']) {
+        throw new Error('Paramètres OpenID manquants');
+      }
+
+      // Vérifier que l'utilisateur a bien signé
+      if (!query['openid.claimed_id'] || !query['openid.identity']) {
+        throw new Error('Identité OpenID manquante');
+      }
+
       // Extraire le Steam ID de l'URL de retour
       const returnUrl = query['openid.return_to'];
+      if (!returnUrl) {
+        throw new Error('URL de retour manquante');
+      }
+
+      // Le Steam ID est généralement dans l'URL de retour
+      // Format attendu : https://.../callback?steamid=123456789
       const steamIdMatch = returnUrl.match(/steamid=(\d+)/);
       if (steamIdMatch) {
         return steamIdMatch[1];
       }
+
+      // Alternative : extraire depuis l'identité OpenID
+      const identityMatch = query['openid.identity'].match(/\/id\/(\d+)/);
+      if (identityMatch) {
+        return identityMatch[1];
+      }
+
+      throw new Error('Impossible d\'extraire le Steam ID');
+    } catch (error) {
+      this.logger.error('Erreur lors de la vérification Steam OpenID:', error);
+      throw new Error(`Authentification Steam invalide: ${error.message}`);
     }
-    
-    throw new Error('Authentification Steam invalide');
   }
 
   /**

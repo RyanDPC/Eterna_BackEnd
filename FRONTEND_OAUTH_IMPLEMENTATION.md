@@ -1,90 +1,48 @@
 # Implémentation Frontend OAuth Simplifiée
 
-Ce document explique comment implémenter l'authentification OAuth côté frontend avec la nouvelle approche simplifiée.
-
 ## 🎯 Concept
-
 1. **Clic sur le bouton** → Ouvre une fenêtre web
 2. **Authentification** → L'utilisateur se connecte sur Google/Steam
 3. **Récupération des données** → La fenêtre reçoit les données
-4. **Fermeture de la fenêtre** → L'utilisateur ferme la fenêtre
-5. **Continuation dans Eterna** → Eterna utilise les données pour continuer
+4. **Redirection automatique** → La fenêtre redirige vers /chat
+5. **Fermeture automatique** → La fenêtre se ferme après 3 secondes
+6. **Continuation dans Eterna** → Eterna récupère les données et continue
 
 ## 🚀 Implémentation
 
 ### **1. Ouverture de la Fenêtre d'Authentification**
-
 ```typescript
 // oauth-helper.ts
 export class OAuthHelper {
   private static authWindow: Window | null = null;
-  private static resolvePromise: ((value: any) => void) | null = null;
-  private static rejectPromise: ((reason?: any) => void) | null = null;
 
-  /**
-   * Ouvre une fenêtre pour l'authentification OAuth
-   */
   static async openOAuthWindow(provider: 'google' | 'steam'): Promise<any> {
     return new Promise((resolve, reject) => {
-      this.resolvePromise = resolve;
-      this.rejectPromise = reject;
-
-      // URL d'authentification
-      const authUrl = `https://eterna-backend-ezru.onrender.com/api/oauth/${provider}`;
+      // Ouvrir la fenêtre d'authentification
+      const authUrl = `/api/oauth/${provider}`;
+      this.authWindow = window.open(authUrl, 'oauth', 'width=500,height=600');
       
-      // Configuration de la fenêtre
-      const windowWidth = 600;
-      const windowHeight = 700;
-      const left = (window.screen.width - windowWidth) / 2;
-      const top = (window.screen.height - windowHeight) / 2;
-
-      // Ouvrir la fenêtre
-      this.authWindow = window.open(
-        authUrl,
-        `oauth_${provider}`,
-        `width=${windowWidth},height=${windowHeight},left=${left},top=${top},scrollbars=yes,resizable=yes,menubar=no,toolbar=no`
-      );
-
       if (!this.authWindow) {
-        reject(new Error('Impossible d\'ouvrir la fenêtre d\'authentification. Vérifiez que les popups ne sont pas bloquées.'));
+        reject(new Error('Impossible d\'ouvrir la fenêtre d\'authentification'));
         return;
       }
 
-      // Écouter les messages de la fenêtre
-      this.setupMessageListener();
+      // Configurer l'écouteur de messages
+      this.setupMessageListener(resolve, reject);
       
-      // Vérifier si la fenêtre est fermée manuellement
-      this.checkWindowClosed();
+      // Vérifier si la fenêtre se ferme
+      this.checkWindowClosed(reject);
     });
   }
 
-  /**
-   * Configure l'écouteur de messages
-   */
-  private static setupMessageListener() {
+  private static setupMessageListener(resolve: Function, reject: Function) {
     const messageHandler = (event: MessageEvent) => {
-      // Vérifier l'origine du message (sécurité)
-      if (event.origin !== 'https://eterna-backend-ezru.onrender.com') {
-        return;
-      }
-
-      const { type, provider, success, data, message } = event.data;
-
-      if (type === 'oauth_callback') {
-        if (success) {
-          // Authentification réussie
-          this.resolvePromise?.({
-            provider,
-            data,
-            message
-          });
+      if (event.data.type === 'oauth_callback') {
+        if (event.data.success) {
+          resolve(event.data);
         } else {
-          // Authentification échouée
-          this.rejectPromise?.(new Error(message));
+          reject(new Error(event.data.message));
         }
-        
-        // Fermer la fenêtre d'authentification
-        this.authWindow?.close();
         this.cleanup();
       }
     };
@@ -95,28 +53,23 @@ export class OAuthHelper {
     (this as any).messageHandler = messageHandler;
   }
 
-  /**
-   * Vérifie si la fenêtre est fermée manuellement
-   */
-  private static checkWindowClosed() {
-    const checkInterval = setInterval(() => {
+  private static checkWindowClosed(reject: Function) {
+    const checkClosed = setInterval(() => {
       if (this.authWindow?.closed) {
-        clearInterval(checkInterval);
-        this.rejectPromise?.(new Error('Fenêtre d\'authentification fermée par l\'utilisateur'));
+        clearInterval(checkClosed);
+        reject(new Error('Fenêtre d\'authentification fermée'));
         this.cleanup();
       }
     }, 1000);
   }
 
-  /**
-   * Nettoie les ressources
-   */
   private static cleanup() {
+    if (this.authWindow && !this.authWindow.closed) {
+      this.authWindow.close();
+    }
     this.authWindow = null;
-    this.resolvePromise = null;
-    this.rejectPromise = null;
     
-    // Retirer l'écouteur de messages
+    // Nettoyer l'écouteur de messages
     if ((this as any).messageHandler) {
       window.removeEventListener('message', (this as any).messageHandler);
       (this as any).messageHandler = null;
@@ -125,302 +78,194 @@ export class OAuthHelper {
 }
 ```
 
-### **2. Gestion de la Fermeture de Fenêtre**
-
+### **2. Gestion de la Redirection vers /chat**
 ```typescript
-// window-manager.ts
-export class WindowManager {
-  /**
-   * Gère la fermeture de la fenêtre d'authentification
-   */
-  static handleAuthWindowClosed(provider: 'google' | 'steam', data: any) {
-    console.log(`Fenêtre d'authentification ${provider} fermée avec succès`);
+// oauth-redirect-handler.ts
+export class OAuthRedirectHandler {
+  static handleOAuthRedirect() {
+    const urlParams = new URLSearchParams(window.location.search);
     
-    // Stocker les données d'authentification temporairement
-    sessionStorage.setItem('oauth_temp_data', JSON.stringify({
-      provider,
-      data,
-      timestamp: Date.now()
-    }));
-    
-    // Notifier l'utilisateur
-    this.showNotification('Fenêtre d\'authentification fermée', 'Dernière vérification : ' + new Date().toLocaleTimeString());
-    
-    // Continuer automatiquement dans Eterna
-    this.continueInEterna(provider, data);
-  }
-
-  /**
-   * Affiche une notification
-   */
-  private static showNotification(title: string, message: string) {
-    // Créer une notification dans l'interface
-    const notification = document.createElement('div');
-    notification.className = 'auth-notification';
-    notification.innerHTML = `
-      <div class="notification-header">
-        <span class="notification-icon">🔒</span>
-        <span class="notification-title">${title}</span>
-        <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
-      </div>
-      <div class="notification-message">${message}</div>
-    `;
-    
-    document.body.appendChild(notification);
-    
-    // Auto-suppression après 10 secondes
-    setTimeout(() => {
-      if (notification.parentElement) {
-        notification.remove();
+    if (urlParams.get('oauth_success')) {
+      const provider = urlParams.get('provider');
+      if (provider) {
+        this.handleOAuthSuccess(provider);
       }
-    }, 10000);
+    } else if (urlParams.get('oauth_error')) {
+      const provider = urlParams.get('provider');
+      const message = urlParams.get('message');
+      this.handleOAuthError(provider, message);
+    }
   }
 
-  /**
-   * Continue l'authentification dans Eterna
-   */
-  private static async continueInEterna(provider: 'google' | 'steam', data: any) {
+  private static async handleOAuthSuccess(provider: string) {
     try {
-      // Envoyer les données au backend pour finaliser l'authentification
-      const response = await fetch('/api/auth/social-login/' + provider, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          provider,
-          data: data
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la finalisation de l\'authentification');
-      }
-
-      const authResult = await response.json();
+      // Récupérer les données OAuth
+      const oauthData = await this.getOAuthData(provider);
       
-      // Stocker le token JWT
-      localStorage.setItem('jwt_token', authResult.access_token);
+      // Finaliser l'authentification
+      await this.finalizeOAuth(provider, oauthData);
       
-      // Nettoyer les données temporaires
-      sessionStorage.removeItem('oauth_temp_data');
-      
-      // Rediriger vers l'interface principale
-      window.location.href = '/dashboard';
+      // Nettoyer l'URL
+      window.history.replaceState({}, document.title, '/chat');
       
     } catch (error) {
-      console.error('Erreur lors de la continuation dans Eterna:', error);
-      
-      // Afficher un message d'erreur
-      this.showNotification('Erreur d\'authentification', 'Veuillez réessayer ou contacter le support');
+      console.error('Erreur lors de la finalisation OAuth:', error);
+      this.showError(`Erreur lors de la finalisation: ${error.message}`);
     }
+  }
+
+  private static async getOAuthData(provider: string) {
+    const response = await fetch(`/api/oauth/data/${provider}`);
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    
+    return result.data;
+  }
+
+  private static async finalizeOAuth(provider: string, oauthData: any) {
+    const response = await fetch(`/api/auth/social-login/${provider}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider,
+        data: oauthData
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Erreur lors de la finalisation');
+    }
+    
+    // Stocker le token JWT
+    localStorage.setItem('access_token', result.access_token);
+    localStorage.setItem('refresh_token', result.refresh_token);
+    
+    // Stocker les informations utilisateur
+    localStorage.setItem('user', JSON.stringify(result.user));
+    
+    return result;
+  }
+
+  private static handleOAuthError(provider: string, message: string) {
+    this.showError(`Erreur OAuth ${provider}: ${message}`);
+    window.history.replaceState({}, document.title, '/chat');
+  }
+
+  private static showError(message: string) {
+    // Afficher l'erreur dans l'interface
+    console.error(message);
+    // Implémenter l'affichage d'erreur selon votre UI
   }
 }
 ```
 
 ### **3. Composants de Boutons Mise à Jour**
-
-#### **Bouton Google**
-
 ```typescript
 // GoogleLoginButton.tsx
-import React, { useState } from 'react';
 import { OAuthHelper } from './oauth-helper';
-import { WindowManager } from './window-manager';
+import { OAuthRedirectHandler } from './oauth-redirect-handler';
 
-export const GoogleLoginButton: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(false);
-
+export function GoogleLoginButton() {
   const handleGoogleLogin = async () => {
     try {
-      setIsLoading(true);
-      
       const result = await OAuthHelper.openOAuthWindow('google');
+      console.log('Authentification Google réussie:', result);
       
-      // La fenêtre s'est fermée avec succès
-      WindowManager.handleAuthWindowClosed('google', result.data);
+      // La fenêtre se fermera automatiquement et redirigera vers /chat
+      // Les données seront traitées automatiquement
       
     } catch (error) {
       console.error('Erreur lors de l\'authentification Google:', error);
-      // Gérer l'erreur dans l'interface
-    } finally {
-      setIsLoading(false);
     }
   };
 
   return (
-    <button
-      onClick={handleGoogleLogin}
-      disabled={isLoading}
-      className="google-login-btn"
-    >
-      {isLoading ? (
-        <span>Ouverture de la page Google...</span>
-      ) : (
-        <>
-          <img src="/google-icon.svg" alt="Google" />
-          <span>Se connecter avec Google</span>
-          <span className="external-link">🔗</span>
-        </>
-      )}
+    <button onClick={handleGoogleLogin} className="google-login-btn">
+      <img src="/google-icon.svg" alt="Google" />
+      Se connecter avec Google
+      <span className="external-link">🔗</span>
     </button>
   );
-};
-```
+}
 
-#### **Bouton Steam**
-
-```typescript
 // SteamLoginButton.tsx
-import React, { useState } from 'react';
-import { OAuthHelper } from './oauth-helper';
-import { WindowManager } from './window-manager';
-
-export const SteamLoginButton: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(false);
-
+export function SteamLoginButton() {
   const handleSteamLogin = async () => {
     try {
-      setIsLoading(true);
-      
       const result = await OAuthHelper.openOAuthWindow('steam');
+      console.log('Authentification Steam réussie:', result);
       
-      // La fenêtre s'est fermée avec succès
-      WindowManager.handleAuthWindowClosed('steam', result.data);
+      // La fenêtre se fermera automatiquement et redirigera vers /chat
+      // Les données seront traitées automatiquement
       
     } catch (error) {
       console.error('Erreur lors de l\'authentification Steam:', error);
-      // Gérer l'erreur dans l'interface
-    } finally {
-      setIsLoading(false);
     }
   };
 
   return (
-    <button
-      onClick={handleSteamLogin}
-      disabled={isLoading}
-      className="steam-login-btn"
-    >
-      {isLoading ? (
-        <span>Ouverture de la page Steam...</span>
-      ) : (
-        <>
-          <img src="/steam-icon.svg" alt="Steam" />
-          <span>Se connecter avec Steam</span>
-          <span className="external-link">🔗</span>
-        </>
-      )}
+    <button onClick={handleSteamLogin} className="steam-login-btn">
+      <img src="/steam-icon.svg" alt="Steam" />
+      Se connecter avec Steam
+      <span className="external-link">🔗</span>
     </button>
   );
-};
-```
-
-## 🎨 Styles CSS pour les Notifications
-
-```css
-/* auth-notification.css */
-.auth-notification {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  background: #1f2937;
-  color: white;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  max-width: 300px;
-  border-left: 4px solid #10b981;
-}
-
-.notification-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.notification-icon {
-  font-size: 16px;
-}
-
-.notification-title {
-  font-weight: 600;
-  flex: 1;
-}
-
-.notification-close {
-  background: none;
-  border: none;
-  color: #9ca3af;
-  cursor: pointer;
-  font-size: 18px;
-  padding: 0;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.notification-close:hover {
-  color: white;
-}
-
-.notification-message {
-  font-size: 14px;
-  color: #d1d5db;
-}
-
-/* Animation d'entrée */
-.auth-notification {
-  animation: slideIn 0.3s ease-out;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
 }
 ```
 
-## 🔄 **Flux Complet Corrigé**
+### **4. Initialisation dans la Page /chat**
+```typescript
+// chat-page.tsx
+import { OAuthRedirectHandler } from './oauth-redirect-handler';
 
-### **1. Clic sur le bouton**
-- Ouvre une fenêtre web vers Google/Steam
-- Affiche "Ouverture de la page [Provider]..."
+export function ChatPage() {
+  useEffect(() => {
+    // Vérifier les paramètres OAuth au chargement de la page
+    OAuthRedirectHandler.handleOAuthRedirect();
+  }, []);
 
-### **2. Authentification**
-- L'utilisateur se connecte sur la page externe
-- Les données sont récupérées
+  // ... reste du composant
+}
+```
 
-### **3. Page de succès**
-- Affiche "Authentification réussie !"
-- Instructions claires : "Fermez cette fenêtre"
-- Données affichées pour vérification
+## 🔄 Flux Complet Corrigé
 
-### **4. Fermeture de la fenêtre**
-- L'utilisateur ferme la fenêtre
-- Notification : "Fenêtre d'authentification fermée"
-- Continuation automatique dans Eterna
+1. **Utilisateur clique sur "Se connecter avec Google/Steam"**
+2. **Fenêtre d'authentification s'ouvre** (`/api/oauth/google` ou `/api/oauth/steam`)
+3. **Utilisateur s'authentifie sur Google/Steam**
+4. **Google/Steam redirige vers le callback** (`/api/oauth/google/callback` ou `/api/oauth/steam/callback`)
+5. **Page de callback affiche le succès et redirige automatiquement** vers `/api/oauth/finalize/:provider`
+6. **Endpoint de finalisation stocke les données en cookies et redirige** vers `/chat?oauth_success=:provider`
+7. **Page /chat détecte les paramètres OAuth et récupère les données** via `/api/oauth/data/:provider`
+8. **Frontend finalise l'authentification** via `/api/auth/social-login/:provider`
+9. **Utilisateur est connecté et peut continuer dans l'application**
 
-### **5. Finalisation**
-- Envoi des données au backend
-- Stockage du token JWT
-- Redirection vers le dashboard
+## ✅ Avantages de cette Approche Corrigée
 
-## ✅ **Avantages de cette Approche Corrigée**
+- **Redirection automatique** vers /chat après authentification
+- **Fermeture automatique** de la fenêtre d'authentification
+- **Gestion des erreurs** avec redirection vers /chat
+- **Stockage sécurisé** des données OAuth en cookies
+- **Récupération automatique** des données utilisateur
+- **Intégration transparente** avec l'application existante
+- **Pas de redirection vers eterna-setup.exe** - tout se passe dans l'application
 
-- ✅ **Pas de redirection vers eterna-setup.exe**
-- ✅ **Fermeture simple de la fenêtre**
-- ✅ **Continuation directe dans Eterna**
-- ✅ **Interface claire et intuitive**
-- ✅ **Gestion automatique des erreurs**
+## 🚨 Points d'Attention
 
-Maintenant le système fonctionne exactement comme vous le vouliez ! 🎉
+1. **Cookies** : Les données OAuth sont stockées en cookies non-httpOnly pour permettre l'accès frontend
+2. **Sécurité** : Les cookies expirent après 5 minutes
+3. **CORS** : Assurez-vous que CORS est configuré pour permettre les cookies
+4. **HTTPS** : En production, les cookies doivent être sécurisés (secure: true)
+
+## 🧪 Test
+
+1. Cliquez sur "Se connecter avec Google"
+2. Authentifiez-vous sur Google
+3. La fenêtre devrait se fermer automatiquement après 3 secondes
+4. Vous devriez être redirigé vers /chat avec les données OAuth
+5. L'authentification devrait se finaliser automatiquement

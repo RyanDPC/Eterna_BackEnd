@@ -110,12 +110,34 @@ export class SimpleOAuthController {
   async steamCallback(@Query() query: any, @Res() res: Response) {
     try {
       this.logger.log('Traitement du callback Steam...');
+      this.logger.debug('Query Steam:', query);
+
+      // Vérifier que c'est bien un retour d'authentification Steam
+      if (query['openid.mode'] !== 'id_res') {
+        this.logger.error('Mode Steam OpenID invalide:', query['openid.mode']);
+        return this.renderCallbackPage(res, 'steam', false, 'Authentification Steam invalide');
+      }
+
+      // Vérifier que l'utilisateur a bien signé
+      if (!query['openid.sig'] || !query['openid.assoc_handle']) {
+        this.logger.error('Signature Steam manquante');
+        return this.renderCallbackPage(res, 'steam', false, 'Signature Steam manquante');
+      }
 
       const result = await this.simpleOAuthService.processSteamCallback(query);
 
       if (result.success) {
         this.logger.log(`Authentification Steam réussie pour: ${result.data.user.username}`);
-        return this.renderCallbackPage(res, 'steam', true, 'Authentification réussie !', result.data);
+        
+        // Stocker les données en cookies pour la finalisation
+        res.cookie(`oauth_steam_data`, JSON.stringify(result.data), {
+          httpOnly: false,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 5 * 60 * 1000 // 5 minutes
+        });
+
+        return this.renderCallbackPage(res, 'steam', true, 'Authentification Steam réussie ! Redirection automatique...', result.data);
       } else {
         this.logger.error(`Échec de l'authentification Steam: ${result.error}`);
         return this.renderCallbackPage(res, 'steam', false, `Échec: ${result.error}`);
@@ -171,24 +193,46 @@ export class SimpleOAuthController {
     try {
       this.logger.log(`Finalisation de l'authentification ${provider}`);
       
-      // Traiter les données OAuth selon le provider
+      // Récupérer les données OAuth depuis les cookies
+      const cookieName = `oauth_${provider}_data`;
+      const oauthDataCookie = res.req.cookies[cookieName];
+      
+      if (!oauthDataCookie) {
+        this.logger.error(`Données OAuth ${provider} non trouvées dans les cookies`);
+        return res.redirect(`/chat?oauth_error=${provider}&message=${encodeURIComponent('Données OAuth non trouvées')}`);
+      }
+
+      let oauthData;
+      try {
+        oauthData = JSON.parse(oauthDataCookie);
+      } catch (error) {
+        this.logger.error(`Erreur lors du parsing des données OAuth ${provider}:`, error);
+        return res.redirect(`/chat?oauth_error=${provider}&message=${encodeURIComponent('Données OAuth invalides')}`);
+      }
+
+      // Traiter les données selon le provider
       let result;
       if (provider === 'google') {
-        result = await this.simpleOAuthService.processGoogleCallback(query.code);
+        // Pour Google, on a déjà les données, pas besoin de retraiter
+        result = { success: true, data: oauthData };
       } else if (provider === 'steam') {
-        result = await this.simpleOAuthService.processSteamCallback(query);
+        // Pour Steam, on a déjà les données, pas besoin de retraiter
+        result = { success: true, data: oauthData };
       } else {
         throw new BadRequestException(`Provider ${provider} non supporté`);
       }
 
       if (result.success) {
-        // Stocker les données en session ou cookies pour l'application desktop
-        res.cookie(`oauth_${provider}_data`, JSON.stringify(result.data), {
+        // Stocker les données en cookies pour l'application desktop
+        res.cookie(`oauth_${provider}_final_data`, JSON.stringify(result.data), {
           httpOnly: false, // Permettre l'accès depuis le frontend
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
           maxAge: 5 * 60 * 1000 // 5 minutes
         });
+
+        // Nettoyer le cookie temporaire
+        res.clearCookie(cookieName);
 
         // Rediriger vers /chat avec un paramètre de succès
         return res.redirect(`/chat?oauth_success=${provider}&provider=${provider}`);
@@ -382,22 +426,30 @@ export class SimpleOAuthController {
               }, '*');
             }
             
-            // Redirection automatique vers /chat après 2 secondes
+            // Redirection automatique vers /chat après 3 secondes si succès
             ${success ? `
               setTimeout(() => {
                 // Rediriger vers /chat avec les données OAuth
                 window.location.href = '/api/oauth/finalize/${provider}?code=${success && data ? encodeURIComponent(JSON.stringify(data)) : ''}';
-              }, 2000);
+              }, 3000);
             ` : ''}
             
-            // Auto-fermeture après 3 secondes si succès
+            // Auto-fermeture après 5 secondes si succès
             ${success ? `
               setTimeout(() => {
                 if (window.opener) {
                   window.close();
                 }
-              }, 3000);
+              }, 5000);
             ` : ''}
+            
+            // Empêcher l'affichage de messages de succès prématurés
+            if (!${success}) {
+              // En cas d'erreur, ne pas envoyer de message de succès
+              console.log('Authentification ${provider} échouée: ${message}');
+            } else {
+              console.log('Authentification ${provider} réussie, redirection en cours...');
+            }
           </script>
         </div>
       </body>
