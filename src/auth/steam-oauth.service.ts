@@ -68,7 +68,7 @@ export class SteamOAuthService {
   /**
    * Génère l'URL d'authentification Steam
    */
-  async getAuthenticationUrl(): Promise<string> {
+  async getAuthenticationUrl(options?: { userAgent?: string; isDesktopApp?: boolean }): Promise<string> {
     try {
       // URL de base Steam OpenID
       const steamOpenIdUrl = 'https://steamcommunity.com/openid/login';
@@ -82,6 +82,14 @@ export class SteamOAuthService {
         'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
         'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select'
       });
+
+      // Ajouter des paramètres personnalisés pour identifier le type d'application
+      if (options?.userAgent) {
+        params.append('userAgent', options.userAgent);
+      }
+      if (options?.isDesktopApp) {
+        params.append('isDesktopApp', 'true');
+      }
 
       const authUrl = `${steamOpenIdUrl}?${params.toString()}`;
       this.logger.log('URL d\'authentification Steam générée');

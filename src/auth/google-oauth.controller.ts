@@ -21,12 +21,19 @@ export class GoogleOAuthController {
    * Redirige l'utilisateur vers Google OAuth2 pour l'autorisation
    */
   @Get('google')
-  async googleAuth(@Res() res: Response) {
+  async googleAuth(@Query() query: any, @Res() res: Response) {
     try {
       this.logger.log('Redirection vers Google OAuth2');
       
-      // Génère l'URL d'autorisation Google
-      const authUrl = this.googleOAuthService.getAuthorizationUrl();
+      // Détecter le type d'application
+      const userAgent = query.userAgent || '';
+      const isDesktopApp = userAgent.includes('Eterna') || userAgent.includes('Desktop') || !userAgent.includes('Mozilla');
+      
+      // Génère l'URL d'autorisation Google avec le type d'application
+      const authUrl = this.googleOAuthService.getAuthorizationUrl({
+        userAgent: userAgent,
+        isDesktopApp: isDesktopApp
+      });
       
       // Redirige l'utilisateur vers Google
       return res.redirect(authUrl);
@@ -45,12 +52,12 @@ export class GoogleOAuthController {
    */
   @Get('google/callback')
   async googleCallback(
-    @Query('code') code: string,
-    @Query('error') error: string,
-    @Query('state') state: string,
+    @Query() query: any,
     @Res() res: Response,
   ) {
     try {
+      const { code, error, state, userAgent } = query;
+      
       // Vérification des erreurs renvoyées par Google
       if (error) {
         this.logger.error(`Erreur Google OAuth: ${error}`);
@@ -74,42 +81,68 @@ export class GoogleOAuthController {
       // Traite le code d'autorisation
       const result = await this.googleOAuthService.processAuthorizationCode(code);
 
-      // Retourne les informations utilisateur et tokens
-      const response = {
-        success: true,
-        message: 'Authentification Google réussie',
-        data: {
-          // Informations utilisateur
-          user: {
-            id: result.profile.id,
-            email: result.profile.email,
-            name: result.profile.name,
-            given_name: result.profile.given_name,
-            family_name: result.profile.family_name,
-            picture: result.profile.picture,
-            locale: result.profile.locale,
-            verified_email: result.profile.verified_email,
-          },
-          // Tokens OAuth
-          tokens: {
-            access_token: result.tokens.access_token,
-            refresh_token: result.tokens.refresh_token,
-            token_type: result.tokens.token_type,
-            scope: result.tokens.scope,
-            expires_at: new Date(result.tokens.expiry_date).toISOString(),
-          },
-          // Métadonnées
-          metadata: {
-            provider: 'google',
-            authenticated_at: new Date().toISOString(),
-            redirect_uri: this.googleOAuthService.getConfigInfo().redirect_uri,
-          }
-        }
-      };
-
+      // Succès - Détecter le type d'application et rediriger en conséquence
       this.logger.log(`Authentification Google réussie pour: ${result.profile.email}`);
 
-      return res.status(HttpStatus.OK).json(response);
+      // Décoder le paramètre state pour récupérer les informations sur le type d'application
+      let isDesktopApp = false;
+      let originalUserAgent = '';
+      
+      if (state) {
+        try {
+          const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
+          originalUserAgent = stateData.userAgent || '';
+          isDesktopApp = stateData.isDesktopApp || false;
+        } catch (error) {
+          this.logger.warn('Impossible de décoder le paramètre state, utilisation des paramètres de fallback');
+        }
+      }
+
+      // Fallback: détecter si c'est une application desktop
+      if (!isDesktopApp && userAgent) {
+        isDesktopApp = userAgent.includes('Eterna') || userAgent.includes('Desktop') || !userAgent.includes('Mozilla');
+      }
+
+      if (isDesktopApp) {
+        // Rediriger vers l'application desktop avec les données d'authentification
+        const redirectUrl = `eterna://auth/google?success=true&email=${encodeURIComponent(result.profile.email)}&name=${encodeURIComponent(result.profile.name)}&id=${result.profile.id}`;
+        return res.redirect(redirectUrl);
+      } else {
+        // Pour les applications web, retourner JSON
+        const response = {
+          success: true,
+          message: 'Authentification Google réussie',
+          data: {
+            // Informations utilisateur
+            user: {
+              id: result.profile.id,
+              email: result.profile.email,
+              name: result.profile.name,
+              given_name: result.profile.given_name,
+              family_name: result.profile.family_name,
+              picture: result.profile.picture,
+              locale: result.profile.locale,
+              verified_email: result.profile.verified_email,
+            },
+            // Tokens OAuth
+            tokens: {
+              access_token: result.tokens.access_token,
+              refresh_token: result.tokens.refresh_token,
+              token_type: result.tokens.token_type,
+              scope: result.tokens.scope,
+              expires_at: new Date(result.tokens.expiry_date).toISOString(),
+            },
+            // Métadonnées
+            metadata: {
+              provider: 'google',
+              authenticated_at: new Date().toISOString(),
+              redirect_uri: this.googleOAuthService.getConfigInfo().redirect_uri,
+            }
+          }
+        };
+
+        return res.status(HttpStatus.OK).json(response);
+      }
 
     } catch (error) {
       this.logger.error('Erreur lors du traitement du callback Google:', error);

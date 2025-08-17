@@ -76,18 +76,25 @@ export class GoogleOAuthService {
   /**
    * Génère l'URL d'autorisation Google OAuth2
    */
-  getAuthorizationUrl(): string {
+  getAuthorizationUrl(options?: { userAgent?: string; isDesktopApp?: boolean }): string {
     try {
       const scopes = [
         'https://www.googleapis.com/auth/userinfo.profile',
         'https://www.googleapis.com/auth/userinfo.email'
       ];
 
+      // Ajouter des paramètres d'état personnalisés pour identifier le type d'application
+      const stateData = {
+        timestamp: Date.now(),
+        userAgent: options?.userAgent || '',
+        isDesktopApp: options?.isDesktopApp || false
+      };
+
       const authUrl = this.oauth2Client.generateAuthUrl({
         access_type: 'offline', // Pour obtenir un refresh_token
         scope: scopes,
         prompt: 'consent', // Force le consentement pour obtenir le refresh_token
-        state: this.generateState(), // État pour la sécurité CSRF
+        state: Buffer.from(JSON.stringify(stateData)).toString('base64'), // État encodé pour la sécurité CSRF
       });
 
       this.logger.log('URL d\'autorisation Google générée');

@@ -21,12 +21,19 @@ export class SteamOAuthController {
    * Redirige l'utilisateur vers Steam OpenID pour l'authentification
    */
   @Get('steam')
-  async steamAuth(@Res() res: Response) {
+  async steamAuth(@Query() query: any, @Res() res: Response) {
     try {
       this.logger.log('Redirection vers Steam OpenID');
       
-      // Génère l'URL d'authentification Steam
-      const authUrl = await this.steamOAuthService.getAuthenticationUrl();
+      // Détecter le type d'application
+      const userAgent = query.userAgent || '';
+      const isDesktopApp = userAgent.includes('Eterna') || userAgent.includes('Desktop') || !userAgent.includes('Mozilla');
+      
+      // Génère l'URL d'authentification Steam avec le type d'application
+      const authUrl = await this.steamOAuthService.getAuthenticationUrl({
+        userAgent: userAgent,
+        isDesktopApp: isDesktopApp
+      });
       
       // Redirige l'utilisateur vers Steam
       return res.redirect(authUrl);
@@ -83,52 +90,62 @@ export class SteamOAuthController {
         });
       }
 
-      // Succès - Retourner les informations utilisateur
-      const response = {
-        success: true,
-        message: 'Authentification Steam réussie',
-        data: {
-          // Informations utilisateur Steam
-          user: {
-            steamid: result.profile.steamid,
-            username: result.profile.personaname,
-            displayName: result.profile.personaname,
-            realName: result.profile.realname || null,
-            profileUrl: result.profile.profileurl,
-            avatar: {
-              small: result.profile.avatar,
-              medium: result.profile.avatarmedium,
-              large: result.profile.avatarfull,
-              hash: result.profile.avatarhash,
-            },
-            location: {
-              country: result.profile.loccountrycode || null,
-              state: result.profile.locstatecode || null,
-              city: result.profile.loccityid || null,
-            },
-            status: {
-              personaState: result.profile.personastate,
-              communityVisibility: result.profile.communityvisibilitystate,
-              personaStateFlags: result.profile.personastateflags || null,
-            },
-            primaryClanId: result.profile.primaryclanid || null,
-            accountCreated: result.profile.timecreated ? new Date(result.profile.timecreated * 1000).toISOString() : null,
-          },
-          // Métadonnées
-          metadata: {
-            provider: 'steam',
-            authenticated_at: new Date().toISOString(),
-            steamid: result.steamid,
-            api_version: 'v0002',
-          }
-        }
-      };
-
+      // Succès - Rediriger vers l'application desktop
       this.logger.log(`Authentification Steam réussie pour: ${result.profile.personaname} (${result.steamid})`);
 
-      // Retourner JSON pour TOUS les clients (desktop et web)
-      // Le front-end/desktop gère sa propre interface
-      return res.status(HttpStatus.OK).json(response);
+      // Détecter si c'est une application desktop (basé sur les paramètres personnalisés ou l'User-Agent)
+      const userAgent = query.userAgent || '';
+      const isDesktopAppParam = query.isDesktopApp === 'true';
+      const isDesktopApp = isDesktopAppParam || userAgent.includes('Eterna') || userAgent.includes('Desktop') || !userAgent.includes('Mozilla');
+
+      if (isDesktopApp) {
+        // Rediriger vers l'application desktop avec les données d'authentification
+        const redirectUrl = `eterna://auth/steam?success=true&steamid=${result.steamid}&username=${encodeURIComponent(result.profile.personaname)}`;
+        return res.redirect(redirectUrl);
+      } else {
+        // Pour les applications web, retourner JSON
+        const response = {
+          success: true,
+          message: 'Authentification Steam réussie',
+          data: {
+            // Informations utilisateur Steam
+            user: {
+              steamid: result.profile.steamid,
+              username: result.profile.personaname,
+              displayName: result.profile.personaname,
+              realName: result.profile.realname || null,
+              profileUrl: result.profile.profileurl,
+              avatar: {
+                small: result.profile.avatar,
+                medium: result.profile.avatarmedium,
+                large: result.profile.avatarfull,
+                hash: result.profile.avatarhash,
+              },
+              location: {
+                country: result.profile.loccountrycode || null,
+                state: result.profile.locstatecode || null,
+                city: result.profile.loccityid || null,
+              },
+              status: {
+                personaState: result.profile.personastate,
+                communityVisibility: result.profile.communityvisibilitystate,
+                personaStateFlags: result.profile.personastateflags || null,
+              },
+              primaryClanId: result.profile.primaryclanid || null,
+              accountCreated: result.profile.timecreated ? new Date(result.profile.timecreated * 1000).toISOString() : null,
+            },
+            // Métadonnées
+            metadata: {
+              provider: 'steam',
+              authenticated_at: new Date().toISOString(),
+              steamid: result.steamid,
+              api_version: 'v0002',
+            }
+          }
+        };
+
+        return res.status(HttpStatus.OK).json(response);
+      }
 
     } catch (error) {
       this.logger.error('Erreur lors du traitement du retour Steam:', error);
