@@ -1,20 +1,72 @@
-# 🚀 ETERNA Backend
+# ETERNA Backend
 
-Backend complet et optimisé pour l'application ETERNA avec authentification JWT, gestion des équipes, salons de chat et communication temps réel via WebSocket.
+Backend complet pour l'application ETERNA avec SQLite, optimisé pour le déploiement sur Render.
 
-## ✨ Fonctionnalités
+## 🚀 Déploiement sur Render
 
-- 🔐 **Authentification JWT** avec refresh tokens
-- 👥 **Gestion des utilisateurs** et profils
-- 🏢 **Gestion des équipes** avec rôles et permissions
-- 💬 **Salons de chat** publics et privés
-- 📱 **Messages** avec support des réponses et threads
-- 🔌 **WebSocket temps réel** pour le chat
-- 🗄️ **Base de données SQLite** optimisée pour la production
-- 🚀 **Performance maximale** avec code optimisé
+### 1. Configuration automatique
+- Connectez votre repository GitHub à Render
+- Render utilisera automatiquement le fichier `render.yaml` pour la configuration
 
-## 🛠️ Technologies
+### 2. Variables d'environnement
+Les variables d'environnement suivantes sont configurées automatiquement :
+- `NODE_ENV`: production
+- `PORT`: 10000 (port Render)
+- `DATABASE_URL`: file:./eterna.db (SQLite)
+- `JWT_SECRET` et `JWT_REFRESH_SECRET`: générés automatiquement
+- `CORS_ORIGIN`: * (pour permettre l'accès depuis n'importe quel domaine)
 
+**Note importante** : Pour un déploiement en production, modifiez `CORS_ORIGIN` dans Render pour limiter l'accès à vos domaines autorisés.
+
+### 5. Accès à l'API
+Une fois déployé, votre API sera accessible sur :
+- **URL de base** : `https://votre-app.onrender.com`
+- **Health check** : `https://votre-app.onrender.com/api/health`
+- **Documentation** : Les endpoints sont listés ci-dessous
+
+### 7. Test de l'API
+Après le déploiement, testez votre API :
+```bash
+# Health check
+curl https://votre-app.onrender.com/api/health
+
+# Test de connexion
+curl https://votre-app.onrender.com/api/health/ping
+```
+
+### 3. Base de données
+- SQLite est utilisé pour la simplicité
+- La base de données sera créée automatiquement au premier démarrage
+- Utilisez `npm run db:push` pour créer les tables
+
+### 4. Configuration automatique
+Le fichier `render.yaml` configure automatiquement :
+- Port : 10000 (port Render standard)
+- Variables d'environnement
+- Commandes de build et démarrage
+- Configuration CORS pour l'accès public
+
+### 6. Fichiers de configuration
+- `render.yaml` : Configuration Render automatique
+- `env.example` : Exemple de variables d'environnement
+- `Procfile` : Configuration de démarrage
+
+### 8. Structure du projet
+```
+src/
+├── auth/           # Authentification JWT
+├── users/          # Gestion des utilisateurs
+├── teams/          # Gestion des équipes
+├── rooms/          # Gestion des salons
+├── messages/       # Gestion des messages
+├── websocket/      # Communication temps réel
+├── prisma/         # Base de données
+├── health/         # Health checks
+├── app.module.ts   # Module principal
+└── main.ts         # Point d'entrée
+```
+
+### 9. Technologies utilisées
 - **Framework** : NestJS 10
 - **Base de données** : Prisma ORM + SQLite
 - **Authentification** : JWT + Passport
@@ -22,127 +74,102 @@ Backend complet et optimisé pour l'application ETERNA avec authentification JWT
 - **Validation** : class-validator
 - **Sécurité** : Helmet, CORS, Rate Limiting
 
-## 📋 Prérequis
-
-- Node.js 18+ 
+### 10. Prérequis
+- Node.js 18+
 - npm 8+
 - Git
 
-## 🚀 Installation et démarrage
-
-### 1. Cloner le repository
-```bash
-git clone <votre-repo>
-cd Eterna_BackEnd/backend
-```
-
-### 2. Installer les dépendances
-```bash
-npm install
-```
-
-### 3. Configuration de l'environnement
-```bash
-# Le fichier config.env est déjà configuré pour la production
-# Modifier si nécessaire selon vos besoins
-nano config.env
-```
-
-### 4. Configuration de la base de données
-```bash
-# Générer le client Prisma
-npm run db:generate
-
-# Créer et initialiser la base de données
-npm run db:push
-npm run db:seed
-```
-
-### 5. Démarrer le serveur
-```bash
-# Mode production (recommandé)
-npm run start:prod
-
-# Mode développement (avec hot reload)
-npm run start:dev
-```
-
-## 🌐 Endpoints API
+## 📋 Endpoints disponibles
 
 ### Authentification
-- `POST /api/auth/register` - Créer un compte
-- `POST /api/auth/login` - Se connecter
-- `POST /api/auth/refresh` - Rafraîchir le token
-- `GET /api/auth/profile` - Profil utilisateur
-- `POST /api/auth/logout` - Se déconnecter
+- `POST /api/auth/register` - Inscription utilisateur
+- `POST /api/auth/login` - Connexion utilisateur
 
 ### Utilisateurs
 - `GET /api/users` - Liste des utilisateurs
+- `POST /api/users` - Créer un utilisateur
 - `GET /api/users/:id` - Détails d'un utilisateur
-- `PATCH /api/users/:id` - Modifier un utilisateur
+- `PUT /api/users/:id` - Modifier un utilisateur
 - `DELETE /api/users/:id` - Supprimer un utilisateur
-- `GET /api/users/online` - Utilisateurs en ligne
 
 ### Équipes
-- `GET /api/teams` - Liste des équipes publiques
+- `GET /api/teams` - Liste des équipes
 - `POST /api/teams` - Créer une équipe
 - `GET /api/teams/:id` - Détails d'une équipe
-- `PATCH /api/teams/:id` - Modifier une équipe
+- `PUT /api/teams/:id` - Modifier une équipe
 - `DELETE /api/teams/:id` - Supprimer une équipe
-- `POST /api/teams/:id/members` - Ajouter un membre
-- `DELETE /api/teams/:id/members/:memberId` - Supprimer un membre
 
-### Salons
-- `GET /api/rooms` - Liste des salons publics
-- `POST /api/rooms` - Créer un salon
-- `GET /api/rooms/:id` - Détails d'un salon
-- `PATCH /api/rooms/:id` - Modifier un salon
-- `DELETE /api/rooms/:id` - Supprimer un salon
-- `POST /api/rooms/:id/join` - Rejoindre un salon
-- `POST /api/rooms/:id/leave` - Quitter un salon
+### Salles de chat
+- `GET /api/rooms` - Liste des salles
+- `POST /api/rooms` - Créer une salle
+- `GET /api/rooms/:id` - Détails d'une salle
+- `PUT /api/rooms/:id` - Modifier une salle
+- `DELETE /api/rooms/:id` - Supprimer une salle
 
 ### Messages
-- `POST /api/messages` - Envoyer un message
-- `GET /api/messages/room/:roomId` - Messages d'un salon
+- `GET /api/messages` - Liste des messages
+- `POST /api/messages` - Créer un message
 - `GET /api/messages/:id` - Détails d'un message
-- `PATCH /api/messages/:id` - Modifier un message
+- `PUT /api/messages/:id` - Modifier un message
 - `DELETE /api/messages/:id` - Supprimer un message
-- `GET /api/messages/search/:roomId` - Rechercher des messages
 
 ### WebSocket
-- `ws://localhost:3001` - Connexion WebSocket
-- Événements : `join:room`, `leave:room`, `typing:start`, `typing:stop`
+- Connexion WebSocket sur le port configuré pour le chat en temps réel
 
-## 🔧 Configuration
+### Santé de l'API
+- `GET /api/health` - Vérification de l'état de l'API
+- `GET /api/health/ping` - Test de connectivité simple
 
-### Variables d'environnement
+## 🛠️ Développement local
 
-```env
-# Configuration de base
-NODE_ENV=production
-PORT=3000
+```bash
+# Installer les dépendances
+npm install
 
-# Base de données
-DATABASE_URL="file:./eterna.db"
+# Générer le client Prisma
+npm run db:generate
 
-# JWT
-JWT_SECRET=your-secret-key
-JWT_EXPIRES_IN=7d
-JWT_REFRESH_SECRET=your-refresh-secret
-JWT_REFRESH_EXPIRES_IN=30d
+# Créer la base de données
+npm run db:push
 
-# CORS
-CORS_ORIGIN=http://localhost:3000,http://localhost:5173
+# Initialiser avec des données de test (optionnel)
+npm run db:seed
 
-# Sécurité
-BCRYPT_ROUNDS=12
-HELMET_ENABLED=true
-COMPRESSION_ENABLED=true
+# Démarrer en mode développement
+npm run start:dev
 ```
+
+## 📦 Build et production
+
+```bash
+# Build de production
+npm run build
+
+# Démarrer en production
+npm run start:prod
+```
+
+## 🌐 Déploiement
+
+### Render (recommandé)
+1. Connectez votre repository GitHub à Render
+2. Render utilisera automatiquement le fichier `render.yaml`
+3. L'API sera accessible sur `https://votre-app.onrender.com`
+
+### Variables d'environnement personnalisées
+Si vous souhaitez personnaliser la configuration, modifiez les variables dans Render :
+- `CORS_ORIGIN`: Limitez à vos domaines autorisés
+- `JWT_SECRET`: Utilisez vos propres clés secrètes
+- `THROTTLE_LIMIT`: Ajustez selon vos besoins
+
+### Autres plateformes
+- **Heroku** : Utilisez le `Procfile`
+- **Vercel** : Compatible avec NestJS
+- **Railway** : Supporte Node.js et SQLite
 
 ## 🧪 Comptes de test
 
-Après l'initialisation de la base de données :
+Après l'initialisation de la base de données avec `npm run db:seed` :
 
 ```bash
 # Admin
@@ -158,76 +185,28 @@ Email: designer@eterna.com
 Mot de passe: password123
 ```
 
-### Test de l'API
-
-1. **Health Check** : `http://localhost:3000/api/health`
-2. **Ping** : `http://localhost:3000/api/health/ping`
-
-## 📁 Structure du projet
-
-```
-src/
-├── auth/           # Authentification JWT
-├── users/          # Gestion des utilisateurs
-├── teams/          # Gestion des équipes
-├── rooms/          # Gestion des salons
-├── messages/       # Gestion des messages
-├── websocket/      # Communication temps réel
-├── prisma/         # Base de données
-├── health/         # Health checks
-├── app.module.ts   # Module principal
-└── main.ts         # Point d'entrée
-```
-
 ## 🔒 Sécurité
+- JWT pour l'authentification
+- Rate limiting configuré
+- Helmet pour la sécurité HTTP
+- Compression activée
+- Validation des données avec class-validator
 
-- **JWT** avec expiration et refresh
-- **bcrypt** pour le hashage des mots de passe
-- **CORS** configuré pour le frontend
-- **Rate limiting** pour éviter les abus
-- **Validation** stricte des données
-- **Permissions** basées sur les rôles
-- **Helmet** pour la sécurité HTTP
+## 📝 Notes importantes
+- **Base de données** : SQLite est utilisé pour la simplicité. Pour la production, considérez PostgreSQL ou MySQL
+- **CORS** : Configuré pour permettre l'accès depuis n'importe quel domaine. Limitez selon vos besoins
+- **JWT** : Les clés secrètes sont générées automatiquement par Render
+- **Ports** : L'API écoute sur le port configuré par Render (généralement 10000)
 
-## 📊 Monitoring
-
-- **Health checks** pour vérifier l'état du service
-- **Logs** structurés et optimisés
-- **Gestion des erreurs** centralisée
-
-## 🐛 Dépannage
-
-### Problèmes courants
-
-1. **Base de données** : Vérifier que SQLite est accessible
-2. **Ports** : Vérifier que les ports 3000 et 3001 sont libres
-3. **Dépendances** : Supprimer `node_modules` et réinstaller
-4. **Prisma** : Régénérer le client avec `npm run db:generate`
-
-### Logs
-
-```bash
-# Logs de production
-npm run start:prod
-```
-
-## 🤝 Contribution
-
-1. Fork le projet
-2. Créer une branche feature
-3. Commit vos changements
-4. Push vers la branche
-5. Ouvrir une Pull Request
-
-## 📄 Licence
-
-MIT License - voir le fichier [LICENSE](LICENSE) pour plus de détails.
-
-## 📞 Support
-
-- **Issues** : [GitHub Issues](https://github.com/votre-repo/issues)
-- **Email** : support@eterna.com
+## 🚀 Avantages de cette configuration
+- **Simple** : Configuration automatique avec Render
+- **Gratuit** : SQLite + Render free tier
+- **Sécurisé** : JWT, rate limiting, Helmet
+- **Scalable** : Facilement migrable vers PostgreSQL
+- **Maintenable** : Code propre et bien structuré
 
 ---
 
 **ETERNA Backend** - Communication professionnelle simplifiée 🚀
+
+*Prêt pour le déploiement sur Render avec SQLite !*

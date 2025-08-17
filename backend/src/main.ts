@@ -33,7 +33,8 @@ async function bootstrap() {
   );
 
   // CORS
-  const corsOrigins = process.env.CORS_ORIGIN?.split(',') || [
+  const corsOrigin = process.env.CORS_ORIGIN;
+  const corsOrigins = corsOrigin === '*' ? true : corsOrigin?.split(',') || [
     'http://localhost:3000',
     'http://localhost:5173',
   ];
