@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import * as cookieParser from 'cookie-parser';
 
 // Import des middlewares avec require pour éviter les problèmes d'import
 const helmet = require('helmet');
@@ -20,6 +21,9 @@ async function bootstrap() {
     forbidNonWhitelisted: true,
     transform: true,
   }));
+
+  // Configuration des cookies
+  app.use(cookieParser());
 
   // Sécurité
   if (process.env.HELMET_ENABLED !== 'false') {
@@ -45,7 +49,7 @@ async function bootstrap() {
     trustProxy: true,
   }));
 
-  // CORS
+  // Configuration CORS
   const corsOrigin = process.env.CORS_ORIGIN;
   const corsOrigins = corsOrigin === '*' ? true : corsOrigin?.split(',') || [
     'http://localhost:3000',

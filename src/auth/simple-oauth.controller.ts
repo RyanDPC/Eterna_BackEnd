@@ -5,7 +5,9 @@ import {
   Res, 
   HttpStatus, 
   Logger,
-  BadRequestException 
+  BadRequestException,
+  Param,
+  Req
 } from '@nestjs/common';
 import { Response } from 'express';
 import { SimpleOAuthService } from './simple-oauth.service';
@@ -157,6 +159,90 @@ export class SimpleOAuthController {
   }
 
   /**
+   * GET /oauth/finalize/:provider
+   * Finalise l'authentification et redirige vers /chat
+   */
+  @Get('finalize/:provider')
+  async finalizeAuth(
+    @Param('provider') provider: 'google' | 'steam',
+    @Query() query: any,
+    @Res() res: Response,
+  ) {
+    try {
+      this.logger.log(`Finalisation de l'authentification ${provider}`);
+      
+      // Traiter les données OAuth selon le provider
+      let result;
+      if (provider === 'google') {
+        result = await this.simpleOAuthService.processGoogleCallback(query.code);
+      } else if (provider === 'steam') {
+        result = await this.simpleOAuthService.processSteamCallback(query);
+      } else {
+        throw new BadRequestException(`Provider ${provider} non supporté`);
+      }
+
+      if (result.success) {
+        // Stocker les données en session ou cookies pour l'application desktop
+        res.cookie(`oauth_${provider}_data`, JSON.stringify(result.data), {
+          httpOnly: false, // Permettre l'accès depuis le frontend
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 5 * 60 * 1000 // 5 minutes
+        });
+
+        // Rediriger vers /chat avec un paramètre de succès
+        return res.redirect(`/chat?oauth_success=${provider}&provider=${provider}`);
+      } else {
+        // Rediriger vers /chat avec un paramètre d'erreur
+        return res.redirect(`/chat?oauth_error=${provider}&message=${encodeURIComponent(result.error)}`);
+      }
+
+    } catch (error) {
+      this.logger.error(`Erreur lors de la finalisation ${provider}:`, error);
+      return res.redirect(`/chat?oauth_error=${provider}&message=${encodeURIComponent(error.message)}`);
+    }
+  }
+
+  /**
+   * GET /oauth/data/:provider
+   * Récupère les données OAuth stockées
+   */
+  @Get('data/:provider')
+  async getOAuthData(
+    @Param('provider') provider: 'google' | 'steam',
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    try {
+      const cookieName = `oauth_${provider}_data`;
+      const oauthData = req.cookies[cookieName];
+      
+      if (!oauthData) {
+        return res.status(404).json({
+          success: false,
+          error: 'Données OAuth non trouvées'
+        });
+      }
+
+      // Supprimer le cookie après récupération
+      res.clearCookie(cookieName);
+
+      return res.json({
+        success: true,
+        provider,
+        data: JSON.parse(oauthData)
+      });
+
+    } catch (error) {
+      this.logger.error(`Erreur lors de la récupération des données OAuth ${provider}:`, error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erreur lors de la récupération des données OAuth'
+      });
+    }
+  }
+
+  /**
    * Rendu de la page de callback
    */
   private renderCallbackPage(
@@ -296,13 +382,21 @@ export class SimpleOAuthController {
               }, '*');
             }
             
-            // Auto-fermeture après 5 secondes si succès
+            // Redirection automatique vers /chat après 2 secondes
+            ${success ? `
+              setTimeout(() => {
+                // Rediriger vers /chat avec les données OAuth
+                window.location.href = '/api/oauth/finalize/${provider}?code=${success && data ? encodeURIComponent(JSON.stringify(data)) : ''}';
+              }, 2000);
+            ` : ''}
+            
+            // Auto-fermeture après 3 secondes si succès
             ${success ? `
               setTimeout(() => {
                 if (window.opener) {
                   window.close();
                 }
-              }, 5000);
+              }, 3000);
             ` : ''}
           </script>
         </div>
