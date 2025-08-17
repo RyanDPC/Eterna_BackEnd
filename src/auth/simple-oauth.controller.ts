@@ -190,85 +190,92 @@ export class SimpleOAuthController {
 
   /**
    * GET /oauth/steam/callback
-   * Traite le retour de Steam OpenID
+   * Callback Steam OpenID - ATTEND la vraie authentification
    */
   @Get('steam/callback')
-  async steamCallback(@Query() query: any, @Res() res: Response) {
+  async steamCallback(@Req() req: any, @Res() res: Response) {
     try {
-      this.logger.log('🚀 [DEBUG] Début du callback Steam OpenID');
+      this.logger.log('🔄 [DEBUG] Callback Steam OpenID reçu');
       
-      // Debug: Log de tous les paramètres reçus
       if (this.DEBUG_MODE) {
-        this.logger.debug('📋 [DEBUG] Paramètres reçus dans le callback Steam:', {
-          openidMode: query['openid.mode'],
-          openidSig: query['openid.sig'] ? `${query['openid.sig'].substring(0, 20)}...` : 'null',
-          openidAssocHandle: query['openid.assoc_handle'],
-          openidIdentity: query['openid.identity'],
-          openidClaimedId: query['openid.claimed_id'],
-          allQueryParams: Object.keys(query),
-          headers: {
-            'user-agent': res.req.headers['user-agent'],
-            'referer': res.req.headers['referer'],
-            'origin': res.req.headers['origin']
-          }
+        this.logger.debug('📊 [DEBUG] Paramètres de callback Steam:', {
+          query: req.query,
+          hasOpenidMode: !!req.query['openid.mode'],
+          openidMode: req.query['openid.mode'],
+          hasOpenidSig: !!req.query['openid.sig'],
+          hasOpenidAssocHandle: !!req.query['openid.assoc_handle'],
+          hasOpenidIdentity: !!req.query['openid.identity'],
+          hasOpenidClaimedId: !!req.query['openid.claimed_id']
         });
       }
 
-      // Vérifier que c'est bien un retour d'authentification Steam
-      if (query['openid.mode'] !== 'id_res') {
-        this.logger.error(`❌ [DEBUG] Mode Steam OpenID invalide: ${query['openid.mode']}`);
-        return this.renderCallbackPage(res, 'steam', false, 'Authentification Steam invalide');
-      }
-
-      // Vérifier que l'utilisateur a bien signé
-      if (!query['openid.sig'] || !query['openid.assoc_handle']) {
-        this.logger.error('❌ [DEBUG] Signature Steam manquante dans le callback');
-        this.logger.debug('📋 [DEBUG] Paramètres manquants:', {
-          hasSig: !!query['openid.sig'],
-          hasAssocHandle: !!query['openid.assoc_handle']
+      // VÉRIFICATION CRITIQUE : Attendre que l'utilisateur clique sur "Sign In"
+      const openidMode = req.query['openid.mode'];
+      
+      if (openidMode !== 'id_res') {
+        this.logger.log('⚠️ [DEBUG] Steam OpenID - utilisateur n\'a pas encore cliqué sur Sign In');
+        
+        // Afficher une page d'attente au lieu de "Connexion réussie"
+        return this.renderCallbackPage(res, 'steam', false, {
+          message: 'En attente de confirmation Steam... Veuillez cliquer sur "Sign In" dans la popup Steam',
+          error: 'Authentification non confirmée'
         });
-        return this.renderCallbackPage(res, 'steam', false, 'Signature Steam manquante');
       }
 
-      this.logger.log('✅ [DEBUG] Paramètres Steam valides, traitement en cours...');
-
-      const result = await this.simpleOAuthService.processSteamCallback(query);
-
+      // L'utilisateur a cliqué sur "Sign In" - valider l'authentification
+      this.logger.log('✅ [DEBUG] Steam OpenID - utilisateur a cliqué sur Sign In, validation en cours...');
+      
+      const result = await this.simpleOAuthService.authenticateSteam(req);
+      
       if (this.DEBUG_MODE) {
         this.logger.debug('📊 [DEBUG] Résultat du traitement Steam:', {
           success: result.success,
           hasData: !!result.data,
           dataKeys: result.data ? Object.keys(result.data) : [],
-          error: result.error || 'null'
+          error: result.error
         });
       }
 
-      if (result.success) {
-        this.logger.log(`✅ [DEBUG] Authentification Steam réussie pour: ${result.data.user.username}`);
+      if (result.success && result.data) {
+        this.logger.log(`✅ [DEBUG] Authentification Steam réussie pour: ${result.data.user?.displayName || 'Utilisateur Steam'}`);
         
-        // Stocker les données en cookies pour la finalisation
-        res.cookie(`oauth_steam_data`, JSON.stringify(result.data), {
-          httpOnly: false,
+        // Créer le cookie avec les VRAIES données Steam
+        const cookieName = 'oauth_steam_data';
+        const cookieValue = JSON.stringify(result.data);
+        
+        res.cookie(cookieName, cookieValue, {
+          httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
           maxAge: 5 * 60 * 1000 // 5 minutes
         });
-
-        if (this.DEBUG_MODE) {
-          this.logger.debug('🍪 [DEBUG] Cookie Steam OAuth créé avec succès');
-        }
-
-        return this.renderCallbackPage(res, 'steam', true, 'Authentification Steam réussie ! Redirection automatique...', result.data);
+        
+        this.logger.log('🍪 [DEBUG] Cookie Steam OAuth créé avec succès');
+        
+        // Afficher la page de succès avec les VRAIES données
+        return this.renderCallbackPage(res, 'steam', true, {
+          message: `Connexion réussie avec ${result.data.user?.displayName || 'Steam'}`,
+          data: result.data
+        });
+        
       } else {
-        this.logger.error(`❌ [DEBUG] Échec de l'authentification Steam: ${result.error}`);
-        return this.renderCallbackPage(res, 'steam', false, `Échec: ${result.error}`);
+        this.logger.error(`❌ [DEBUG] Authentification Steam échouée: ${result.error}`);
+        
+        // Afficher la page d'erreur
+        return this.renderCallbackPage(res, 'steam', false, {
+          message: `Échec de l'authentification Steam: ${result.error}`,
+          error: result.error
+        });
       }
 
     } catch (error) {
-      this.logger.error('❌ [DEBUG] Erreur lors du traitement du callback Steam:', error);
+      this.logger.error('❌ [DEBUG] Erreur lors du callback Steam:', error);
       this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
       
-      return this.renderCallbackPage(res, 'steam', false, `Erreur: ${error.message}`);
+      return this.renderCallbackPage(res, 'steam', false, {
+        message: `Erreur lors de l'authentification Steam: ${error.message}`,
+        error: error.message
+      });
     }
   }
 
@@ -524,16 +531,17 @@ export class SimpleOAuthController {
 
   /**
    * GET /oauth/auth/:provider
-   * Endpoint d'authentification principal - retourne les données utilisateur + token
+   * Endpoint d'authentification principal - retourne les données utilisateur + token + rememberMe
    */
   @Get('auth/:provider')
   async authenticateUser(
     @Param('provider') provider: 'google' | 'steam',
+    @Query('rememberMe') rememberMe: string,
     @Req() req: any,
     @Res() res: Response,
   ) {
     try {
-      this.logger.log(`🔐 [DEBUG] Authentification utilisateur ${provider}`);
+      this.logger.log(`🔐 [DEBUG] Authentification utilisateur ${provider} avec rememberMe: ${rememberMe}`);
       
       // Récupérer les données depuis les cookies
       const cookieName = `oauth_${provider}_data`;
@@ -560,7 +568,7 @@ export class SimpleOAuthController {
         });
       }
 
-      // Formater la réponse dans le format standardisé
+      // Formater la réponse dans le format standardisé avec rememberMe
       let userData;
       let accessToken;
       
@@ -589,11 +597,13 @@ export class SimpleOAuthController {
       // Nettoyer le cookie après récupération
       res.clearCookie(cookieName);
       
-      // Retourner la réponse dans le format standardisé demandé
+      // Retourner la réponse dans le format standardisé demandé avec rememberMe
       return res.json({
         success: true,
         user: userData,
-        access_token: accessToken
+        access_token: accessToken,
+        rememberMe: rememberMe === 'true',
+        session_duration: rememberMe === 'true' ? '30 days' : '24 hours'
       });
 
     } catch (error) {
@@ -793,17 +803,223 @@ export class SimpleOAuthController {
   }
 
   /**
+   * GET /oauth/steam/user
+   * Endpoint spécifique pour récupérer les données utilisateur Steam
+   */
+  @Get('steam/user')
+  async getSteamUser(@Req() req: any, @Res() res: Response) {
+    try {
+      this.logger.log('👤 [DEBUG] Récupération des données utilisateur Steam spécifique');
+      
+      // Récupérer les données depuis les cookies
+      const cookieName = 'oauth_steam_data';
+      const oauthDataCookie = req.cookies[cookieName];
+      
+      if (this.DEBUG_MODE) {
+        this.logger.debug('🍪 [DEBUG] Cookies Steam disponibles:', {
+          cookieName: cookieName,
+          hasCookie: !!oauthDataCookie,
+          allCookies: Object.keys(req.cookies)
+        });
+      }
+      
+      if (!oauthDataCookie) {
+        this.logger.error('❌ [DEBUG] Données OAuth Steam non trouvées dans les cookies');
+        return res.status(404).json({
+          success: false,
+          error: 'Données OAuth Steam non trouvées',
+          provider: 'steam',
+          availableCookies: Object.keys(req.cookies),
+          message: 'Veuillez d\'abord vous connecter via Steam OAuth'
+        });
+      }
+
+      let oauthData;
+      try {
+        oauthData = JSON.parse(oauthDataCookie);
+        
+        if (this.DEBUG_MODE) {
+          this.logger.debug('📊 [DEBUG] Données OAuth Steam parsées:', {
+            hasUser: !!oauthData.user,
+            hasTokens: !!oauthData.tokens,
+            userKeys: oauthData.user ? Object.keys(oauthData.user) : [],
+            dataSize: JSON.stringify(oauthData).length
+          });
+        }
+        
+      } catch (error) {
+        this.logger.error('❌ [DEBUG] Erreur lors du parsing des données OAuth Steam:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Données OAuth Steam invalides',
+          provider: 'steam',
+          parseError: error.message
+        });
+      }
+
+      // Formater la réponse Steam dans le format standardisé
+      const userData = {
+        id: `steam_${oauthData.user?.steamId || 'unknown'}`,
+        email: `${oauthData.user?.username || 'unknown'}@steam.com`,
+        name: oauthData.user?.displayName || oauthData.user?.username || 'Nom inconnu',
+        picture: oauthData.user?.avatar || 'https://via.placeholder.com/150'
+      };
+      
+      const accessToken = oauthData.tokens?.access_token || 'no_token';
+
+      this.logger.log(`✅ [DEBUG] Données utilisateur Steam formatées avec succès pour: ${userData.name}`);
+      
+      // Nettoyer le cookie après récupération
+      res.clearCookie(cookieName);
+      
+      // Retourner la réponse dans le format standardisé demandé
+      return res.json({
+        success: true,
+        user: userData,
+        access_token: accessToken,
+        provider: 'steam',
+        steam_specific: {
+          steam_id: oauthData.user?.steamId,
+          username: oauthData.user?.username,
+          real_name: oauthData.user?.realName,
+          country: oauthData.user?.country,
+          status: oauthData.user?.status,
+          profile_url: oauthData.user?.profileUrl
+        }
+      });
+
+    } catch (error) {
+      this.logger.error('❌ [DEBUG] Erreur lors de la récupération des données utilisateur Steam:', error);
+      this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
+      
+      return res.status(500).json({
+        success: false,
+        error: 'Erreur lors de la récupération des données utilisateur Steam',
+        message: error.message,
+        provider: 'steam',
+        debug: this.DEBUG_MODE ? {
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        } : undefined
+      });
+    }
+  }
+
+  /**
+   * GET /oauth/google/user
+   * Endpoint spécifique pour récupérer les vraies données utilisateur Google
+   */
+  @Get('google/user')
+  async getGoogleUser(@Req() req: any, @Res() res: Response) {
+    try {
+      this.logger.log('👤 [DEBUG] Récupération des données utilisateur Google spécifique');
+      
+      // Récupérer les données depuis les cookies
+      const cookieName = 'oauth_google_data';
+      const oauthDataCookie = req.cookies[cookieName];
+      
+      if (this.DEBUG_MODE) {
+        this.logger.debug('🍪 [DEBUG] Cookies Google disponibles:', {
+          cookieName: cookieName,
+          hasCookie: !!oauthDataCookie,
+          allCookies: Object.keys(req.cookies)
+        });
+      }
+      
+      if (!oauthDataCookie) {
+        this.logger.error('❌ [DEBUG] Données OAuth Google non trouvées dans les cookies');
+        return res.status(404).json({
+          success: false,
+          error: 'Données OAuth Google non trouvées',
+          provider: 'google',
+          availableCookies: Object.keys(req.cookies),
+          message: 'Veuillez d\'abord vous connecter via Google OAuth'
+        });
+      }
+
+      let oauthData;
+      try {
+        oauthData = JSON.parse(oauthDataCookie);
+        
+        if (this.DEBUG_MODE) {
+          this.logger.debug('📊 [DEBUG] Données OAuth Google parsées:', {
+            hasUser: !!oauthData.user,
+            hasTokens: !!oauthData.tokens,
+            userKeys: oauthData.user ? Object.keys(oauthData.user) : [],
+            dataSize: JSON.stringify(oauthData).length
+          });
+        }
+        
+      } catch (error) {
+        this.logger.error('❌ [DEBUG] Erreur lors du parsing des données OAuth Google:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Données OAuth Google invalides',
+          provider: 'google',
+          parseError: error.message
+        });
+      }
+
+      // Formater la réponse Google dans le format standardisé avec VRAIES données
+      const userData = {
+        id: `google_${oauthData.user?.id || 'unknown'}`,
+        email: oauthData.user?.email || 'unknown@email.com',
+        name: oauthData.user?.name || 'Nom inconnu',
+        picture: oauthData.user?.picture || 'https://via.placeholder.com/150'
+      };
+      
+      const accessToken = oauthData.tokens?.access_token || 'no_token';
+
+      this.logger.log(`✅ [DEBUG] Données utilisateur Google formatées avec succès pour: ${userData.email}`);
+      
+      // Nettoyer le cookie après récupération
+      res.clearCookie(cookieName);
+      
+      // Retourner la réponse dans le format standardisé demandé avec données Google réelles
+      return res.json({
+        success: true,
+        user: userData,
+        access_token: accessToken,
+        provider: 'google',
+        google_specific: {
+          google_id: oauthData.user?.id,
+          verified_email: oauthData.user?.verified_email || false,
+          locale: oauthData.user?.locale || 'fr',
+          given_name: oauthData.user?.given_name,
+          family_name: oauthData.user?.family_name,
+          email_verified: oauthData.user?.verified_email || false
+        }
+      });
+
+    } catch (error) {
+      this.logger.error('❌ [DEBUG] Erreur lors de la récupération des données utilisateur Google:', error);
+      this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
+      
+      return res.status(500).json({
+        success: false,
+        error: 'Erreur lors de la récupération des données utilisateur Google',
+        message: error.message,
+        provider: 'google',
+        debug: this.DEBUG_MODE ? {
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        } : undefined
+      });
+    }
+  }
+
+  /**
    * Rendu de la page de callback
    */
   private renderCallbackPage(
     res: Response, 
     provider: 'google' | 'steam', 
     success: boolean, 
-    message: string, 
+    message: string | object, 
     data?: any
   ) {
     this.logger.log(`🎨 [DEBUG] Rendu de la page de callback ${provider}`);
-    this.logger.log(`📊 [DEBUG] Statut: ${success}, Message: ${message}`);
+    this.logger.log(`📊 [DEBUG] Statut: ${success}, Message: ${JSON.stringify(message)}`);
     
     if (this.DEBUG_MODE) {
       this.logger.debug('📋 [DEBUG] Données pour le rendu:', {
@@ -927,7 +1143,7 @@ export class SimpleOAuthController {
         <div class="container">
           <div class="icon">${success ? '✅' : '⏳'}</div>
           <div class="provider-name">${provider === 'google' ? 'Google' : 'Steam'}</div>
-          <div class="message ${success ? 'success' : 'error'}">${message}</div>
+          <div class="message ${success ? 'success' : 'error'}">${JSON.stringify(message)}</div>
           
           <div class="debug-info">
             🔍 DEBUG: Page chargée à ${new Date().toLocaleTimeString()}<br>
@@ -1027,7 +1243,7 @@ export class SimpleOAuthController {
                     provider: '${provider}',
                     success: ${success},
                     data: ${success && data ? JSON.stringify(data) : 'null'},
-                    message: '${message}',
+                    message: ${JSON.stringify(message)},
                     timestamp: new Date().toISOString()
                   }, '*');
                 } catch (error) {
@@ -1083,7 +1299,7 @@ export class SimpleOAuthController {
                   provider: '${provider}',
                   success: ${success},
                   data: ${success && data ? JSON.stringify(data) : 'null'},
-                  message: '${message}',
+                  message: ${JSON.stringify(message)},
                   timestamp: new Date().toISOString()
                 }, '*');
               } catch (error) {
@@ -1120,7 +1336,7 @@ export class SimpleOAuthController {
             
             // Empêcher l'affichage de messages de succès prématurés
             if (!${success}) {
-              console.log('❌ [DEBUG] Authentification ${provider} échouée: ${message}');
+              console.log('❌ [DEBUG] Authentification ${provider} échouée: ${JSON.stringify(message)}');
             } else {
               console.log('✅ [DEBUG] Authentification ${provider} réussie, processus automatique en cours...');
             }

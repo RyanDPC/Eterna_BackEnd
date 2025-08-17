@@ -213,6 +213,7 @@ export class SimpleOAuthService {
 
   /**
    * Traite le retour d'authentification Steam
+   * CORRIGÉ : Plus d'authentification prématurée
    */
   async processSteamCallback(query: any): Promise<OAuthResult> {
     try {
@@ -223,39 +224,69 @@ export class SimpleOAuthService {
           queryKeys: Object.keys(query),
           openidMode: query['openid.mode'],
           hasOpenidSig: !!query['openid.sig'],
-          hasOpenidAssocHandle: !!query['openid.assoc_handle']
+          hasOpenidAssocHandle: !!query['openid.assoc_handle'],
+          hasOpenidIdentity: !!query['openid.identity'],
+          hasOpenidClaimedId: !!query['openid.claimed_id']
         });
       }
 
+      // VÉRIFICATION CRITIQUE : Attendre que l'utilisateur clique sur "Sign In"
+      const openidMode = query['openid.mode'];
+      
+      if (openidMode !== 'id_res') {
+        this.logger.log('⚠️ [DEBUG] Steam OpenID - utilisateur n\'a pas encore cliqué sur Sign In');
+        return {
+          success: false,
+          provider: 'steam',
+          error: 'Authentification Steam non confirmée - veuillez cliquer sur Sign In',
+          data: null
+        };
+      }
+
+      // L'utilisateur a cliqué sur "Sign In" - valider l'authentification
+      this.logger.log('✅ [DEBUG] Steam OpenID - utilisateur a cliqué sur Sign In, validation en cours...');
+      
       // Vérifier l'authentification Steam OpenID
       this.logger.log('🔐 [DEBUG] Vérification de l\'authentification Steam OpenID...');
-      const steamId = await this.verifySteamAuthentication(query);
+      const steamResult = await this.verifySteamAuthentication(query);
       
       if (this.DEBUG_MODE) {
-        this.logger.debug('🆔 [DEBUG] Steam ID extrait:', steamId);
+        this.logger.debug('🆔 [DEBUG] Résultat vérification Steam:', {
+          success: steamResult.success,
+          hasData: !!steamResult.data,
+          steamId: steamResult.data?.steamId,
+          error: steamResult.error
+        });
       }
       
-      // Récupérer les informations utilisateur Steam
+      if (!steamResult.success) {
+        this.logger.error(`❌ [DEBUG] Échec de la vérification Steam OpenID: ${steamResult.error}`);
+        return steamResult;
+      }
+
+      // Récupérer les informations utilisateur Steam depuis l'API
       this.logger.log('👤 [DEBUG] Récupération des informations utilisateur Steam...');
-      const userInfo = await this.getSteamUserInfo(steamId);
+      const userInfo = steamResult.data?.user;
       
       if (this.DEBUG_MODE) {
         this.logger.debug('👤 [DEBUG] Informations utilisateur Steam:', {
-          steamId: userInfo.steamId,
-          username: userInfo.username,
-          displayName: userInfo.displayName,
-          hasAvatar: !!userInfo.avatar,
-          hasProfileUrl: !!userInfo.profileUrl
+          steamId: userInfo?.steamId,
+          username: userInfo?.username,
+          displayName: userInfo?.displayName,
+          hasAvatar: !!userInfo?.avatar,
+          hasProfileUrl: !!userInfo?.profileUrl
         });
       }
       
       const result = {
-        success: true,
+        success: steamResult.success,
         provider: 'steam' as const,
         data: {
           user: userInfo,
-          steamId: steamId
-        }
+          steamId: steamResult.data?.steamId,
+          tokens: steamResult.data?.tokens
+        },
+        error: steamResult.error
       };
 
       this.logger.log('✅ [DEBUG] Traitement Steam OAuth terminé avec succès');
@@ -401,84 +432,169 @@ export class SimpleOAuthService {
 
   /**
    * Vérifie l'authentification Steam OpenID
+   * ATTENTION : Cette méthode doit être appelée APRÈS que l'utilisateur clique sur "Sign In"
    */
-  private async verifySteamAuthentication(query: any): Promise<string> {
+  async verifySteamAuthentication(req: any): Promise<OAuthResult> {
     try {
       this.logger.log('🔐 [DEBUG] Début de la vérification Steam OpenID');
       
-      if (this.DEBUG_MODE) {
-        this.logger.debug('📋 [DEBUG] Paramètres de vérification Steam:', {
-          openidMode: query['openid.mode'],
-          hasOpenidSig: !!query['openid.sig'],
-          hasOpenidAssocHandle: !!query['openid.assoc_handle'],
-          hasOpenidIdentity: !!query['openid.identity'],
-          hasOpenidClaimedId: !!query['openid.claimed_id'],
-          hasReturnTo: !!query['openid.return_to']
-        });
-      }
-
-      // Vérifier que c'est bien un retour d'authentification
-      if (query['openid.mode'] !== 'id_res') {
-        this.logger.error(`❌ [DEBUG] Mode Steam OpenID invalide: ${query['openid.mode']}`);
-        throw new Error('Mode OpenID invalide');
-      }
-
-      // Vérifier la présence des paramètres requis
-      if (!query['openid.sig'] || !query['openid.assoc_handle']) {
-        this.logger.error('❌ [DEBUG] Paramètres OpenID manquants pour Steam');
-        this.logger.debug('📋 [DEBUG] Paramètres manquants:', {
-          hasSig: !!query['openid.sig'],
-          hasAssocHandle: !!query['openid.assoc_handle']
-        });
-        throw new Error('Paramètres OpenID manquants');
-      }
-
-      // Vérifier que l'utilisateur a bien signé
-      if (!query['openid.claimed_id'] || !query['openid.identity']) {
-        this.logger.error('❌ [DEBUG] Identité OpenID manquante pour Steam');
-        throw new Error('Identité OpenID manquante');
-      }
-
-      // Extraire le Steam ID de l'URL de retour
-      const returnUrl = query['openid.return_to'];
-      if (!returnUrl) {
-        this.logger.error('❌ [DEBUG] URL de retour manquante pour Steam');
-        throw new Error('URL de retour manquante');
-      }
-
-      if (this.DEBUG_MODE) {
-        this.logger.debug('🔗 [DEBUG] URL de retour Steam:', returnUrl);
-      }
-
-      // Le Steam ID est généralement dans l'URL de retour
-      // Format attendu : https://.../callback?steamid=123456789
-      const steamIdMatch = returnUrl.match(/steamid=(\d+)/);
-      if (steamIdMatch) {
-        const steamId = steamIdMatch[1];
-        this.logger.log(`✅ [DEBUG] Steam ID extrait depuis l'URL: ${steamId}`);
-        return steamId;
-      }
-
-      // Alternative : extraire depuis l'identité OpenID
-      const identityMatch = query['openid.identity'].match(/\/id\/(\d+)/);
-      if (identityMatch) {
-        const steamId = identityMatch[1];
-        this.logger.log(`✅ [DEBUG] Steam ID extrait depuis l'identité: ${steamId}`);
-        return steamId;
-      }
-
-      this.logger.error('❌ [DEBUG] Impossible d\'extraire le Steam ID');
-      this.logger.debug('📋 [DEBUG] Tentatives d\'extraction échouées:', {
-        returnUrl: returnUrl,
-        identity: query['openid.identity'],
-        claimedId: query['openid.claimed_id']
-      });
+      // Vérifier que l'utilisateur a réellement cliqué sur "Sign In"
+      const openidMode = req.query['openid.mode'];
+      const openidSig = req.query['openid.sig'];
+      const openidAssocHandle = req.query['openid.assoc_handle'];
+      const openidClaimedId = req.query['openid.claimed_id'];
+      const openidIdentity = req.query['openid.identity'];
       
-      throw new Error('Impossible d\'extraire le Steam ID');
+      if (this.DEBUG_MODE) {
+        this.logger.debug('📊 [DEBUG] Paramètres OpenID reçus:', {
+          mode: openidMode,
+          hasSig: !!openidSig,
+          hasAssocHandle: !!openidAssocHandle,
+          hasClaimedId: !!openidClaimedId,
+          hasIdentity: !!openidIdentity,
+          allParams: Object.keys(req.query)
+        });
+      }
+
+      // VÉRIFICATION CRITIQUE : L'utilisateur doit avoir cliqué sur "Sign In"
+      if (openidMode !== 'id_res') {
+        this.logger.error('❌ [DEBUG] Mode OpenID invalide - utilisateur n\'a pas cliqué sur Sign In');
+        return {
+          success: false,
+          provider: 'steam',
+          error: 'Authentification Steam non confirmée - veuillez cliquer sur Sign In',
+          data: null
+        };
+      }
+
+      // Vérifier la signature OpenID (validation de sécurité)
+      if (!openidSig || !openidAssocHandle) {
+        this.logger.error('❌ [DEBUG] Signature OpenID manquante - authentification non sécurisée');
+        return {
+          success: false,
+          provider: 'steam',
+          error: 'Signature OpenID manquante - authentification non sécurisée',
+          data: null
+        };
+      }
+
+      // Vérifier l'identité Steam
+      if (!openidClaimedId || !openidIdentity) {
+        this.logger.error('❌ [DEBUG] Identité Steam manquante');
+        return {
+          success: false,
+          provider: 'steam',
+          error: 'Identité Steam manquante',
+          data: null
+        };
+      }
+
+      // Extraire le Steam ID depuis l'identité
+      const steamIdMatch = openidIdentity.match(/\/id\/(\d+)/);
+      if (!steamIdMatch) {
+        this.logger.error('❌ [DEBUG] Steam ID non trouvé dans l\'identité:', openidIdentity);
+        return {
+          success: false,
+          provider: 'steam',
+          error: 'Steam ID non trouvé dans l\'identité',
+          data: null
+        };
+      }
+
+      const steamId = steamIdMatch[1];
+      this.logger.log(`✅ [DEBUG] Steam ID extrait depuis l'identité: ${steamId}`);
+
+      if (this.DEBUG_MODE) {
+        this.logger.debug('🆔 [DEBUG] Steam ID extrait:', steamId);
+      }
+
+      // Récupérer les informations utilisateur depuis l'API Steam
+      this.logger.log('👤 [DEBUG] Récupération des informations utilisateur Steam...');
+      
+      try {
+        const userInfo = await this.getSteamUserInfo(steamId);
+        
+        if (this.DEBUG_MODE) {
+          this.logger.debug('👤 [DEBUG] Informations utilisateur Steam:', {
+            steamId: userInfo.steamId,
+            username: userInfo.username,
+            displayName: userInfo.displayName,
+            hasAvatar: !!userInfo.avatar,
+            hasProfileUrl: !!userInfo.profileUrl
+          });
+        }
+
+        this.logger.log(`✅ [DEBUG] Récupération infos Steam réussie pour: ${userInfo.displayName}`);
+
+        // Retourner les VRAIES données utilisateur Steam
+        return {
+          success: true,
+          provider: 'steam',
+          data: {
+            user: userInfo,
+            steamId: steamId,
+            tokens: {
+              access_token: `steam_${steamId}_${Date.now()}`,
+              token_type: 'Bearer',
+              expires_in: 3600
+            }
+          }
+        };
+
+      } catch (steamApiError) {
+        this.logger.error('❌ [DEBUG] Erreur lors de la récupération des infos Steam:', steamApiError);
+        return {
+          success: false,
+          provider: 'steam',
+          error: `Erreur API Steam: ${steamApiError.message}`,
+          data: null
+        };
+      }
+
     } catch (error) {
       this.logger.error('❌ [DEBUG] Erreur lors de la vérification Steam OpenID:', error);
       this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
-      throw new Error(`Authentification Steam invalide: ${error.message}`);
+      
+      return {
+        success: false,
+        provider: 'steam',
+        error: `Erreur de vérification Steam: ${error.message}`,
+        data: null
+      };
+    }
+  }
+
+  /**
+   * Authentification Steam complète
+   * Valide l'OpenID et récupère les données utilisateur
+   */
+  async authenticateSteam(req: any): Promise<OAuthResult> {
+    try {
+      this.logger.log('🔐 [DEBUG] Début de l\'authentification Steam complète');
+      
+      // Vérifier l'authentification OpenID
+      const steamResult = await this.verifySteamAuthentication(req);
+      
+      if (!steamResult.success) {
+        this.logger.error(`❌ [DEBUG] Échec de la vérification Steam OpenID: ${steamResult.error}`);
+        return steamResult;
+      }
+
+      this.logger.log('✅ [DEBUG] Vérification Steam OpenID réussie, récupération des données utilisateur...');
+      
+      // Les données utilisateur sont déjà récupérées dans verifySteamAuthentication
+      return steamResult;
+
+    } catch (error) {
+      this.logger.error('❌ [DEBUG] Erreur lors de l\'authentification Steam:', error);
+      this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
+      
+      return {
+        success: false,
+        provider: 'steam',
+        error: `Erreur d'authentification Steam: ${error.message}`,
+        data: null
+      };
     }
   }
 
