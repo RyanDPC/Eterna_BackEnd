@@ -64,7 +64,7 @@ export class SimpleOAuthService {
           },
           steam: {
             apiKey: this.configService.get('STEAM_API_KEY') || '',
-            redirectUri: this.configService.get('STEAM_RETURN_URL') || 'https://eterna-backend-ezru.onrender.com/api/oauth/steam/callback'
+            redirectUri: 'https://eterna-backend-ezru.onrender.com/api/oauth/steam/callback' // Forcer l'URL de production
           }
         };
         
@@ -113,16 +113,34 @@ export class SimpleOAuthService {
    * Génère l'URL d'authentification Steam
    */
   getSteamAuthUrl(): string {
+    // Forcer l'utilisation de l'URL de production pour Steam
+    const steamReturnUrl = 'https://eterna-backend-ezru.onrender.com/api/oauth/steam/callback';
+    const steamRealm = 'https://eterna-backend-ezru.onrender.com';
+    
+    if (this.DEBUG_MODE) {
+      this.logger.debug('🔗 [DEBUG] Configuration Steam OAuth:', {
+        returnUrl: steamReturnUrl,
+        realm: steamRealm,
+        hasApiKey: !!this.config.steam.apiKey
+      });
+    }
+
     const params = new URLSearchParams({
       'openid.ns': 'http://specs.openid.net/auth/2.0',
       'openid.mode': 'checkid_setup',
-      'openid.return_to': this.config.steam.redirectUri,
-      'openid.realm': this.configService.get('STEAM_REALM') || 'https://eterna-backend-ezru.onrender.com',
+      'openid.return_to': steamReturnUrl,
+      'openid.realm': steamRealm,
       'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
       'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select'
     });
 
-    return `https://steamcommunity.com/openid/login?${params.toString()}`;
+    const authUrl = `https://steamcommunity.com/openid/login?${params.toString()}`;
+    
+    if (this.DEBUG_MODE) {
+      this.logger.debug('🔗 [DEBUG] URL d\'authentification Steam générée:', authUrl);
+    }
+
+    return authUrl;
   }
 
   /**
