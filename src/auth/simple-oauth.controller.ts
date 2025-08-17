@@ -469,48 +469,40 @@ export class SimpleOAuthController {
         });
       }
 
-      // Formater la réponse selon le provider
+      // Formater la réponse selon le provider dans le format standardisé
       let userData;
+      let accessToken;
+      
       if (provider === 'google') {
         userData = {
-          provider: 'google',
-          userId: oauthData.user?.id,
-          email: oauthData.user?.email,
-          name: oauthData.user?.name,
-          picture: oauthData.user?.picture,
-          verifiedEmail: oauthData.user?.verified_email,
-          accessToken: oauthData.tokens?.access_token ? 'present' : 'missing',
-          refreshToken: oauthData.tokens?.refresh_token ? 'present' : 'missing',
-          tokenType: oauthData.tokens?.token_type,
-          expiresIn: oauthData.tokens?.expires_in
+          id: `google_${oauthData.user?.id || 'unknown'}`,
+          email: oauthData.user?.email || 'unknown@email.com',
+          name: oauthData.user?.name || 'Nom inconnu',
+          picture: oauthData.user?.picture || 'https://via.placeholder.com/150'
         };
+        accessToken = oauthData.tokens?.access_token || 'no_token';
       } else if (provider === 'steam') {
         userData = {
-          provider: 'steam',
-          steamId: oauthData.user?.steamId,
-          username: oauthData.user?.username,
-          displayName: oauthData.user?.displayName,
-          avatar: oauthData.user?.avatar,
-          profileUrl: oauthData.user?.profileUrl,
-          realName: oauthData.user?.realName,
-          country: oauthData.user?.country,
-          status: oauthData.user?.status
+          id: `steam_${oauthData.user?.steamId || 'unknown'}`,
+          email: `${oauthData.user?.username || 'unknown'}@steam.com`,
+          name: oauthData.user?.displayName || oauthData.user?.username || 'Nom inconnu',
+          picture: oauthData.user?.avatar || 'https://via.placeholder.com/150'
         };
+        accessToken = oauthData.tokens?.access_token || 'no_token';
       } else {
         throw new BadRequestException(`Provider ${provider} non supporté`);
       }
 
-      this.logger.log(`✅ [DEBUG] Données utilisateur ${provider} récupérées avec succès`);
+      this.logger.log(`✅ [DEBUG] Données utilisateur ${provider} formatées avec succès`);
       
       // Nettoyer le cookie après récupération
       res.clearCookie(cookieName);
       
+      // Retourner la réponse dans le format standardisé demandé
       return res.json({
         success: true,
-        message: `Données utilisateur ${provider} récupérées`,
-        provider: provider,
         user: userData,
-        timestamp: new Date().toISOString()
+        access_token: accessToken
       });
 
     } catch (error) {
@@ -520,6 +512,205 @@ export class SimpleOAuthController {
       return res.status(500).json({
         success: false,
         error: `Erreur lors de la récupération des données utilisateur ${provider}`,
+        message: error.message,
+        provider: provider,
+        debug: this.DEBUG_MODE ? {
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        } : undefined
+      });
+    }
+  }
+
+  /**
+   * GET /oauth/auth/:provider
+   * Endpoint d'authentification principal - retourne les données utilisateur + token
+   */
+  @Get('auth/:provider')
+  async authenticateUser(
+    @Param('provider') provider: 'google' | 'steam',
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    try {
+      this.logger.log(`🔐 [DEBUG] Authentification utilisateur ${provider}`);
+      
+      // Récupérer les données depuis les cookies
+      const cookieName = `oauth_${provider}_data`;
+      const oauthDataCookie = req.cookies[cookieName];
+      
+      if (!oauthDataCookie) {
+        this.logger.error(`❌ [DEBUG] Données OAuth ${provider} non trouvées pour l'authentification`);
+        return res.status(401).json({
+          success: false,
+          error: 'Authentification requise',
+          message: 'Veuillez d\'abord vous connecter via OAuth'
+        });
+      }
+
+      let oauthData;
+      try {
+        oauthData = JSON.parse(oauthDataCookie);
+      } catch (error) {
+        this.logger.error(`❌ [DEBUG] Erreur lors du parsing des données OAuth ${provider}:`, error);
+        return res.status(500).json({
+          success: false,
+          error: 'Données OAuth invalides',
+          message: error.message
+        });
+      }
+
+      // Formater la réponse dans le format standardisé
+      let userData;
+      let accessToken;
+      
+      if (provider === 'google') {
+        userData = {
+          id: `google_${oauthData.user?.id || 'unknown'}`,
+          email: oauthData.user?.email || 'unknown@email.com',
+          name: oauthData.user?.name || 'Nom inconnu',
+          picture: oauthData.user?.picture || 'https://via.placeholder.com/150'
+        };
+        accessToken = oauthData.tokens?.access_token || 'no_token';
+      } else if (provider === 'steam') {
+        userData = {
+          id: `steam_${oauthData.user?.steamId || 'unknown'}`,
+          email: `${oauthData.user?.username || 'unknown'}@steam.com`,
+          name: oauthData.user?.displayName || oauthData.user?.username || 'Nom inconnu',
+          picture: oauthData.user?.avatar || 'https://via.placeholder.com/150'
+        };
+        accessToken = oauthData.tokens?.access_token || 'no_token';
+      } else {
+        throw new BadRequestException(`Provider ${provider} non supporté`);
+      }
+
+      this.logger.log(`✅ [DEBUG] Authentification ${provider} réussie pour: ${userData.email}`);
+      
+      // Nettoyer le cookie après récupération
+      res.clearCookie(cookieName);
+      
+      // Retourner la réponse dans le format standardisé demandé
+      return res.json({
+        success: true,
+        user: userData,
+        access_token: accessToken
+      });
+
+    } catch (error) {
+      this.logger.error(`❌ [DEBUG] Erreur lors de l'authentification ${provider}:`, error);
+      this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
+      
+      return res.status(500).json({
+        success: false,
+        error: `Erreur lors de l'authentification ${provider}`,
+        message: error.message,
+        provider: provider,
+        debug: this.DEBUG_MODE ? {
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        } : undefined
+      });
+    }
+  }
+
+  /**
+   * GET /oauth/profile/:provider
+   * Récupère le profil utilisateur complet
+   */
+  @Get('profile/:provider')
+  async getUserProfile(
+    @Param('provider') provider: 'google' | 'steam',
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    try {
+      this.logger.log(`👤 [DEBUG] Récupération du profil utilisateur ${provider}`);
+      
+      // Récupérer les données depuis les cookies
+      const cookieName = `oauth_${provider}_data`;
+      const oauthDataCookie = req.cookies[cookieName];
+      
+      if (!oauthDataCookie) {
+        this.logger.error(`❌ [DEBUG] Données OAuth ${provider} non trouvées pour le profil`);
+        return res.status(404).json({
+          success: false,
+          error: 'Profil utilisateur non trouvé',
+          message: 'Veuillez d\'abord vous connecter via OAuth'
+        });
+      }
+
+      let oauthData;
+      try {
+        oauthData = JSON.parse(oauthDataCookie);
+      } catch (error) {
+        this.logger.error(`❌ [DEBUG] Erreur lors du parsing des données OAuth ${provider}:`, error);
+        return res.status(500).json({
+          success: false,
+          error: 'Données OAuth invalides',
+          message: error.message
+        });
+      }
+
+      // Retourner le profil complet selon le provider
+      if (provider === 'google') {
+        const profile = {
+          success: true,
+          user: {
+            id: `google_${oauthData.user?.id || 'unknown'}`,
+            email: oauthData.user?.email || 'unknown@email.com',
+            name: oauthData.user?.name || 'Nom inconnu',
+            picture: oauthData.user?.picture || 'https://via.placeholder.com/150',
+            verified_email: oauthData.user?.verified_email || false,
+            locale: oauthData.user?.locale || 'fr'
+          },
+          access_token: oauthData.tokens?.access_token || 'no_token',
+          provider: 'google',
+          additional_data: {
+            refresh_token: oauthData.tokens?.refresh_token ? 'present' : 'missing',
+            token_type: oauthData.tokens?.token_type || 'Bearer',
+            expires_in: oauthData.tokens?.expires_in || 3600
+          }
+        };
+        
+        this.logger.log(`✅ [DEBUG] Profil Google récupéré pour: ${profile.user.email}`);
+        return res.json(profile);
+        
+      } else if (provider === 'steam') {
+        const profile = {
+          success: true,
+          user: {
+            id: `steam_${oauthData.user?.steamId || 'unknown'}`,
+            email: `${oauthData.user?.username || 'unknown'}@steam.com`,
+            name: oauthData.user?.displayName || oauthData.user?.username || 'Nom inconnu',
+            picture: oauthData.user?.avatar || 'https://via.placeholder.com/150',
+            steam_id: oauthData.user?.steamId || 'unknown',
+            username: oauthData.user?.username || 'unknown',
+            real_name: oauthData.user?.realName || 'Nom inconnu',
+            country: oauthData.user?.country || 'Unknown',
+            status: oauthData.user?.status || 'Unknown'
+          },
+          access_token: oauthData.tokens?.access_token || 'no_token',
+          provider: 'steam',
+          additional_data: {
+            profile_url: oauthData.user?.profileUrl || 'https://steamcommunity.com',
+            steam_level: oauthData.user?.steamLevel || 'Unknown'
+          }
+        };
+        
+        this.logger.log(`✅ [DEBUG] Profil Steam récupéré pour: ${profile.user.name}`);
+        return res.json(profile);
+        
+      } else {
+        throw new BadRequestException(`Provider ${provider} non supporté`);
+      }
+
+    } catch (error) {
+      this.logger.error(`❌ [DEBUG] Erreur lors de la récupération du profil ${provider}:`, error);
+      this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
+      
+      return res.status(500).json({
+        success: false,
+        error: `Erreur lors de la récupération du profil ${provider}`,
         message: error.message,
         provider: provider,
         debug: this.DEBUG_MODE ? {
