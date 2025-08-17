@@ -16,7 +16,7 @@ export interface OAuthConfig {
 export interface OAuthResult {
   success: boolean;
   provider: 'google' | 'steam';
-  data: any;
+  data?: any;
   error?: string;
 }
 
@@ -118,6 +118,7 @@ export class SimpleOAuthService {
       return {
         success: false,
         provider: 'google',
+        data: null,
         error: error.message
       };
     }
@@ -147,6 +148,7 @@ export class SimpleOAuthService {
       return {
         success: false,
         provider: 'steam',
+        data: null,
         error: error.message
       };
     }

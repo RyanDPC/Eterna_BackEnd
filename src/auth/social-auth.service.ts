@@ -2,10 +2,17 @@ import { Injectable, Logger, ConflictException, BadRequestException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { GoogleProfile } from './strategies/google.strategy';
 import * as bcrypt from 'bcrypt';
 
 // Définition des types de profils sociaux
+export interface GoogleProfile {
+  id: string;
+  email: string;
+  name: string;
+  picture?: string;
+  verified_email?: boolean;
+}
+
 export interface AppleProfile {
   id: string;
   email: string;
@@ -338,5 +345,57 @@ export class SocialAuthService {
     // Pour l'instant, on retourne un token simple
     // En production, utilisez le RefreshTokenService
     return `refresh_${userId}_${Date.now()}`;
+  }
+
+  /**
+   * Traite la connexion sociale depuis le frontend
+   */
+  async processSocialLogin(provider: 'google' | 'apple' | 'steam', socialAuthDto: any): Promise<any> {
+    try {
+      this.logger.log(`Traitement de la connexion sociale ${provider}`);
+      
+      // Extraire les données selon le provider
+      let profile: SocialProfile;
+      
+      if (provider === 'google') {
+        profile = {
+          id: socialAuthDto.data.user.id,
+          email: socialAuthDto.data.user.email,
+          name: socialAuthDto.data.user.name,
+          picture: socialAuthDto.data.user.picture,
+          verified_email: socialAuthDto.data.user.verified_email
+        };
+      } else if (provider === 'steam') {
+        profile = {
+          id: socialAuthDto.data.steamId,
+          username: socialAuthDto.data.user.username,
+          displayName: socialAuthDto.data.user.displayName,
+          avatar: socialAuthDto.data.user.avatar,
+          profileUrl: socialAuthDto.data.user.profileUrl
+        };
+      } else {
+        throw new BadRequestException(`Provider ${provider} non supporté`);
+      }
+
+      // Authentifier avec le profil
+      const result = await this.authenticateWithSocial(
+        provider,
+        profile,
+        socialAuthDto.data.tokens?.access_token,
+        socialAuthDto.data.tokens?.refresh_token
+      );
+
+      return {
+        success: true,
+        user: result.user,
+        access_token: result.accessToken,
+        refresh_token: result.refreshToken,
+        isNewUser: result.isNewUser
+      };
+
+    } catch (error) {
+      this.logger.error(`Erreur lors du traitement de la connexion sociale ${provider}:`, error);
+      throw new BadRequestException(`Erreur lors de la connexion via ${provider}: ${error.message}`);
+    }
   }
 }
