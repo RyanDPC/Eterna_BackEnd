@@ -59,8 +59,15 @@ async function bootstrap() {
   await app.listen(port);
   
   console.log(`🚀 Application ETERNA démarrée sur le port ${port}`);
-  console.log(`📚 API disponible sur http://localhost:${port}/api`);
-  console.log(`🔍 Health check: http://localhost:${port}/api/health`);
+  
+  // Détection de l'environnement pour afficher la bonne URL
+  if (process.env.NODE_ENV === 'production' && process.env.RENDER) {
+    console.log(`📚 API disponible sur votre URL Render/api`);
+    console.log(`🔍 Health check: /api/health`);
+  } else {
+    console.log(`📚 API disponible sur http://localhost:${port}/api`);
+    console.log(`🔍 Health check: http://localhost:${port}/api/health`);
+  }
 }
 
 bootstrap().catch((error) => {
