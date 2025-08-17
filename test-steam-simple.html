@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Steam OAuth - ETERNA</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1b2838;
+            color: white;
+        }
+        .container {
+            background: #2a475e;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .btn {
+            display: inline-block;
+            background: #66c0f4;
+            color: #1b2838;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 18px;
+            margin: 10px;
+            border: none;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #4c9bbf;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 6px;
+            background: #3c5a78;
+        }
+        .config {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            text-align: left;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Test Steam OAuth - ETERNA</h1>
+        
+        <div class="status" id="status">
+            Prêt pour le test Steam OAuth
+        </div>
+
+        <div>
+            <button class="btn" onclick="testConfig()">⚙️ Tester Config</button>
+            <button class="btn" onclick="testSteamAuth()">🎮 Steam OAuth</button>
+        </div>
+
+        <div class="config" id="config" style="display: none;">
+            <!-- Configuration affichée ici -->
+        </div>
+
+        <div style="margin-top: 30px;">
+            <h3>🔗 Liens Directs</h3>
+            <p><strong>Steam OAuth :</strong><br>
+               <a href="http://localhost:8080/api/auth/steam" target="_blank" style="color: #66c0f4;">
+                   http://localhost:8080/api/auth/steam
+               </a>
+            </p>
+            <p><strong>Configuration :</strong><br>
+               <a href="http://localhost:8080/api/auth/steam/config" target="_blank" style="color: #66c0f4;">
+                   http://localhost:8080/api/auth/steam/config
+               </a>
+            </p>
+        </div>
+
+        <div style="margin-top: 30px; font-size: 14px; color: #ccc;">
+            <strong>Instructions :</strong><br>
+            1. Cliquez sur "Steam OAuth" ou le lien direct<br>
+            2. Connectez-vous avec Steam<br>
+            3. Autorisez l'application<br>
+            4. Vérifiez les données retournées
+        </div>
+    </div>
+
+    <script>
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.style.background = type === 'error' ? '#d32f2f' : 
+                                       type === 'success' ? '#388e3c' : '#3c5a78';
+        }
+
+        async function testConfig() {
+            updateStatus('🔄 Test de la configuration Steam...', 'info');
+            
+            try {
+                const response = await fetch('http://localhost:8080/api/auth/steam/config');
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('config').style.display = 'block';
+                    document.getElementById('config').innerHTML = `
+                        <strong>✅ Configuration Steam :</strong><br>
+                        API Key: ${data.config.api_key}<br>
+                        Return URL: ${data.config.return_url}<br>
+                        Realm: ${data.config.realm}<br>
+                        Provider: ${data.config.openid_provider}
+                    `;
+                    updateStatus('✅ Configuration Steam chargée avec succès !', 'success');
+                } else {
+                    throw new Error(data.error || 'Configuration invalide');
+                }
+            } catch (error) {
+                updateStatus(`❌ Erreur : ${error.message}`, 'error');
+                document.getElementById('config').style.display = 'block';
+                document.getElementById('config').innerHTML = `
+                    <strong>❌ Erreur de configuration :</strong><br>
+                    ${error.message}
+                `;
+            }
+        }
+
+        function testSteamAuth() {
+            updateStatus('🔄 Redirection vers Steam...', 'info');
+            
+            // Redirection simple vers Steam OAuth
+            window.location.href = 'http://localhost:8080/api/auth/steam';
+        }
+
+        // Test automatique de la configuration au chargement
+        window.onload = function() {
+            testConfig();
+        };
+    </script>
+</body>
+</html>
