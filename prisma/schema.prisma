@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -62,8 +62,8 @@ model UserProfile {
   phone       String?
   location    String?
   website     String?
-  socialLinks String? // JSON stocké comme texte en SQLite
-  preferences String? // JSON stocké comme texte en SQLite
+  socialLinks Json? // JSON natif en PostgreSQL
+  preferences Json? // JSON natif en PostgreSQL
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -99,7 +99,7 @@ model TeamMember {
   id       String   @id @default(cuid())
   userId   String
   teamId   String
-  role     String @default("MEMBER")
+  role     TeamRole @default(MEMBER)
   joinedAt DateTime @default(now())
 
   // Relations
@@ -110,13 +110,12 @@ model TeamMember {
   @@map("team_members")
 }
 
-// SQLite ne supporte pas les enums, on utilise des strings
-// enum TeamRole {
-//   OWNER
-//   ADMIN
-//   MODERATOR
-//   MEMBER
-// }
+enum TeamRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  MEMBER
+}
 
 // ===== SYSTÈME DE CHAT =====
 
@@ -151,7 +150,7 @@ model RoomMember {
   id       String   @id @default(cuid())
   userId   String
   roomId   String
-  role     String @default("MEMBER")
+  role     RoomRole @default(MEMBER)
   joinedAt DateTime @default(now())
   isMuted  Boolean  @default(false)
 
@@ -163,21 +162,20 @@ model RoomMember {
   @@map("room_members")
 }
 
-// SQLite ne supporte pas les enums, on utilise des strings
-// enum RoomRole {
-//   OWNER
-//   ADMIN
-//   MODERATOR
-//   MEMBER
-// }
+enum RoomRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  MEMBER
+}
 
 // ===== MESSAGES ET NOTIFICATIONS =====
 
 model Message {
   id        String   @id @default(cuid())
   content   String
-  type      String @default("TEXT")
-  metadata  String? // JSON stocké comme texte en SQLite
+  type      MessageType @default(TEXT)
+  metadata  Json? // JSON natif en PostgreSQL
   isEdited  Boolean  @default(false)
   isDeleted Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -202,15 +200,14 @@ model Message {
   @@map("messages")
 }
 
-// SQLite ne supporte pas les enums, on utilise des strings
-// enum MessageType {
-//   TEXT
-//   IMAGE
-//   FILE
-//   AUDIO
-//   VIDEO
-//   SYSTEM
-// }
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  AUDIO
+  VIDEO
+  SYSTEM
+}
 
 model PinnedMessage {
   id        String   @id @default(cuid())
@@ -235,7 +232,7 @@ model Invitation {
   teamId    String?
   roomId    String?
   role      String   @default("MEMBER")
-  status    String @default("PENDING")
+  status    InvitationStatus @default(PENDING)
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -249,13 +246,12 @@ model Invitation {
   @@map("invitations")
 }
 
-// SQLite ne supporte pas les enums, on utilise des strings
-// enum InvitationStatus {
-//   PENDING
-//   ACCEPTED
-//   DECLINED
-//   EXPIRED
-// }
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
 
 // 🌸 Modèle Connexion Vocale
 model VoiceConnection {
@@ -278,7 +274,7 @@ model VoiceConnection {
 model UserPermission {
   id       String @id @default(cuid())
   userId   String
-  permission String
+  permission PermissionType
   granted  Boolean @default(true)
   grantedAt DateTime @default(now())
   grantedBy String?
@@ -288,6 +284,19 @@ model UserPermission {
 
   @@unique([userId, permission])
   @@map("user_permissions")
+}
+
+enum PermissionType {
+  CREATE_ROOM
+  DELETE_ROOM
+  MANAGE_USERS
+  MANAGE_ROLES
+  SEND_MESSAGES
+  DELETE_MESSAGES
+  JOIN_VOICE
+  MANAGE_VOICE
+  VIEW_AUDIT_LOGS
+  MANAGE_PERMISSIONS
 }
 
 // 🌸 Modèle Session
@@ -309,7 +318,7 @@ model AuditLog {
   action      String
   resource    String?
   resourceId  String?
-  details     String? // JSON stocké comme texte en SQLite
+  details     Json? // JSON natif en PostgreSQL
   ipAddress   String?
   userAgent   String?
   createdAt   DateTime    @default(now())
@@ -323,7 +332,7 @@ model AuditLog {
 model SocialAccount {
   id         String @id @default(cuid())
   userId     String
-  provider   String // "google", "apple", "steam"
+  provider   SocialProvider
   providerId String // ID fourni par le provider
   email      String?
   name       String?
@@ -343,6 +352,11 @@ model SocialAccount {
   @@map("social_accounts")
 }
 
+enum SocialProvider {
+  GOOGLE
+  STEAM
+}
+
 // Modèle pour les refresh tokens
 model RefreshToken {
   id        String   @id @default(cuid())
@@ -351,7 +365,7 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
   isRevoked Boolean  @default(false)
-  deviceInfo String? // JSON avec info sur l'appareil
+  deviceInfo Json? // JSON avec info sur l'appareil
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -362,31 +376,9 @@ model RefreshToken {
 }
 
 // 🌸 Énumérations
-// SQLite ne supporte pas les enums, on utilise des strings
-// enum UserStatus {
-//   ONLINE
-//   AWAY
-//   DO_NOT_DISTURB
-//   OFFLINE
-// }
-
-// SQLite ne supporte pas les enums, on utilise des strings
-// enum PermissionType {
-//   CREATE_ROOM
-//   DELETE_ROOM
-//   MANAGE_USERS
-//   MANAGE_ROLES
-//   SEND_MESSAGES
-//   DELETE_MESSAGES
-//   JOIN_VOICE
-//   MANAGE_VOICE
-//   VIEW_AUDIT_LOGS
-//   MANAGE_PERMISSIONS
-// }
-
-// SQLite ne supporte pas les enums, on utilise des strings
-// enum SocialProvider {
-//   GOOGLE
-//   APPLE
-//   STEAM
-// }
+enum UserStatus {
+  ONLINE
+  AWAY
+  DO_NOT_DISTURB
+  OFFLINE
+}

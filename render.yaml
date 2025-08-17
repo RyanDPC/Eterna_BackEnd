@@ -2,18 +2,35 @@ services:
   - type: web
     name: eterna-backend
     env: node
-    buildCommand: "npm ci && npm run build"
-    startCommand: "npm run start:prod"
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
+      - key: RENDER
+        value: true
       - key: PORT
-        value: "8080"
-      - key: DATABASE_URL
-        value: "file:./prisma/eterna.db"
+        value: 10000
+      - key: CORS_ORIGIN
+        value: https://eterna-frontend.onrender.com
       - key: JWT_SECRET
         generateValue: true
-      - key: JWT_REFRESH_SECRET
+      - key: SESSION_SECRET
         generateValue: true
-      - key: CORS_ORIGIN
-        value: "*"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: STEAM_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: eterna-db
+          property: connectionString
+
+databases:
+  - name: eterna-db
+    databaseName: eterna_db
+    user: eterna_user
+    plan: free

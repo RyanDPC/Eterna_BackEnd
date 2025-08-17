@@ -1,166 +1,297 @@
-# Eterna Backend
+# 🚀 ETERNA Backend
 
-Backend NestJS pour l'application Eterna avec authentification OAuth simplifiée (Google et Steam).
+Backend moderne et robuste pour l'application ETERNA, construit avec Node.js, Express, Prisma et PostgreSQL.
 
-## 🔄 Nouvelle Approche OAuth Simplifiée
+## ✨ Fonctionnalités
 
-### **Concept**
-1. **Clic sur le bouton** → Ouvre une popup/fenêtre web
-2. **Authentification** → L'utilisateur se connecte sur Google/Steam
-3. **Récupération des données** → La popup reçoit les données d'authentification
-4. **Fermeture automatique** → La popup se ferme et envoie les données à Eterna
-5. **Continuation** → Eterna utilise les données pour continuer
+- 🔐 **Authentification complète** : JWT + Refresh Tokens
+- 🌐 **OAuth intégré** : Google et Steam
+- 👥 **Gestion des utilisateurs** : Profils, avatars, statuts
+- 🏆 **Système d'équipes** : Création, gestion des membres, rôles
+- 🏠 **Salons de chat** : Publics/privés, gestion des permissions
+- 💬 **Messagerie en temps réel** : WebSockets, threads, réponses
+- 🔒 **Système de permissions** : Rôles et permissions granulaires
+- 📱 **API RESTful** : Architecture moderne et documentée
+- 🗄️ **Base de données PostgreSQL** : Schéma optimisé avec Prisma
+- 🚀 **Prêt pour la production** : Configuration Render, sécurité
 
-### **Avantages**
-- ✅ **Simple** : Pas de protocoles personnalisés complexes
-- ✅ **Sécurisé** : Authentification sur les serveurs officiels
-- ✅ **Fiable** : Utilise les APIs standard
-- ✅ **Maintenable** : Code clair et facile à déboguer
-- ✅ **Cross-platform** : Fonctionne sur toutes les plateformes
+## 🛠️ Technologies
 
-## 🚀 Endpoints OAuth
+- **Runtime** : Node.js 18+
+- **Framework** : Express.js
+- **Base de données** : PostgreSQL
+- **ORM** : Prisma
+- **Authentification** : JWT, Passport.js
+- **OAuth** : Google OAuth 2.0, Steam OpenID
+- **WebSockets** : Socket.io
+- **Validation** : Express-validator
+- **Sécurité** : Helmet, CORS, Rate Limiting
 
-### **Authentification**
-- `GET /api/oauth/google` - Redirige vers Google OAuth
-- `GET /api/oauth/steam` - Redirige vers Steam OpenID
+## 📋 Prérequis
 
-### **Callbacks**
-- `GET /api/oauth/google/callback` - Traite le retour Google OAuth
-- `GET /api/oauth/steam/callback` - Traite le retour Steam OpenID
+- Node.js 18+ 
+- PostgreSQL 12+
+- npm ou yarn
 
-### **Configuration**
-- `GET /api/oauth/config` - Retourne la configuration OAuth
+## 🚀 Installation
 
-## 🔧 Configuration
+### 1. Cloner le projet
 
-### **Google OAuth**
-- Client ID et secret configurés dans `client_secret.json`
-- URLs de redirection configurées automatiquement
-
-### **Steam OAuth**
-- Utilise l'API Steam OpenID
-- Configuration via variables d'environnement
-
-## 📱 Implémentation Frontend
-
-### **1. Ouvrir une Popup OAuth**
-```typescript
-import { OAuthHelper } from './oauth-helper';
-
-// Ouvrir une popup pour Google
-const result = await OAuthHelper.openOAuthPopup('google');
-
-// Ouvrir une popup pour Steam
-const result = await OAuthHelper.openOAuthPopup('steam');
+```bash
+git clone https://github.com/RyanDPC/Eterna_BackEnd.git
+cd Eterna_BackEnd
 ```
 
-### **2. Gérer les Résultats**
-```typescript
-// Dans la popup, les données sont automatiquement envoyées
-// L'application principale reçoit les données via postMessage
-window.addEventListener('message', (event) => {
-  if (event.data.type === 'oauth_callback') {
-    const { provider, success, data } = event.data;
-    // Traiter l'authentification
+### 2. Installer les dépendances
+
+```bash
+npm install
+```
+
+### 3. Configuration de l'environnement
+
+Copier le fichier d'exemple et le configurer :
+
+```bash
+cp env.example .env
+```
+
+Éditer le fichier `.env` avec vos configurations :
+
+```env
+# Base de données
+DATABASE_URL="postgresql://username:password@localhost:5432/eterna_db"
+
+# JWT
+JWT_SECRET="votre-super-secret-jwt-key"
+SESSION_SECRET="votre-super-secret-session-key"
+
+# Google OAuth
+GOOGLE_CLIENT_ID="votre-google-client-id"
+GOOGLE_CLIENT_SECRET="votre-google-client-secret"
+
+# Steam OAuth
+STEAM_API_KEY="votre-steam-api-key"
+```
+
+### 4. Configuration de la base de données
+
+#### Option A : Base locale
+
+```bash
+# Créer la base de données
+createdb eterna_db
+
+# Générer le client Prisma
+npm run db:generate
+
+# Pousser le schéma vers la base
+npm run db:push
+
+# (Optionnel) Exécuter les migrations
+npm run db:migrate
+```
+
+#### Option B : Base distante (Render, Railway, etc.)
+
+```bash
+# Générer le client Prisma
+npm run db:generate
+
+# Pousser le schéma vers la base distante
+npm run db:migrate:deploy
+```
+
+### 5. Lancer l'application
+
+#### Mode développement
+```bash
+npm run dev
+```
+
+#### Mode production
+```bash
+npm run build
+npm start
+```
+
+L'API sera disponible sur `http://localhost:8080`
+
+## 📚 Utilisation
+
+### Endpoints principaux
+
+- **API** : `http://localhost:8080/api`
+- **Health Check** : `http://localhost:8080/api/health`
+- **Documentation** : Voir `ENDPOINTS.md`
+
+### Authentification
+
+```bash
+# Inscription
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","username":"user","password":"password123"}'
+
+# Connexion
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"password123"}'
+```
+
+### OAuth
+
+- **Google** : `http://localhost:8080/api/oauth/google`
+- **Steam** : `http://localhost:8080/api/oauth/steam`
+
+## 🗄️ Structure de la base de données
+
+### Modèles principaux
+
+- **User** : Utilisateurs et profils
+- **Team** : Équipes et organisations
+- **Room** : Salons de chat
+- **Message** : Messages et conversations
+- **SocialAccount** : Comptes OAuth
+- **RefreshToken** : Tokens de rafraîchissement
+
+### Relations
+
+- Un utilisateur peut appartenir à plusieurs équipes
+- Une équipe peut avoir plusieurs salons
+- Un salon peut contenir plusieurs messages
+- Les messages supportent les réponses et threads
+
+## 🔧 Scripts disponibles
+
+```bash
+# Développement
+npm run dev              # Lancer en mode développement
+npm run build            # Construire l'application
+npm run start            # Lancer en mode production
+
+# Base de données
+npm run db:generate      # Générer le client Prisma
+npm run db:push          # Pousser le schéma
+npm run db:migrate       # Exécuter les migrations
+npm run db:studio        # Ouvrir Prisma Studio
+npm run db:seed          # Exécuter le seeding
+npm run db:reset         # Réinitialiser la base
+
+# Tests et qualité
+npm run test             # Exécuter les tests
+npm run lint             # Vérifier le code
+npm run lint:fix         # Corriger automatiquement
+```
+
+## 🌐 Déploiement sur Render
+
+### 1. Configuration Render
+
+Le projet inclut un fichier `render.yaml` pour le déploiement automatique.
+
+### 2. Variables d'environnement Render
+
+```env
+NODE_ENV=production
+RENDER=true
+DATABASE_URL=postgresql://...
+JWT_SECRET=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+STEAM_API_KEY=...
+```
+
+### 3. Déploiement
+
+1. Connecter votre repository GitHub à Render
+2. Créer un nouveau service web
+3. Configurer les variables d'environnement
+4. Déployer automatiquement
+
+## 🔒 Sécurité
+
+- **JWT** : Tokens sécurisés avec expiration
+- **Rate Limiting** : Protection contre les attaques
+- **CORS** : Configuration sécurisée pour cross-origin
+- **Helmet** : Headers de sécurité HTTP
+- **Validation** : Validation des données d'entrée
+- **Permissions** : Système de rôles granulaires
+
+## 📱 WebSockets
+
+### Connexion
+
+```javascript
+import { io } from 'socket.io-client';
+
+const socket = io('http://localhost:8080', {
+  auth: {
+    token: 'your-jwt-token'
   }
 });
 ```
 
-### **3. Envoyer au Backend**
-```typescript
-// Envoyer les données au backend
-const response = await fetch('/api/auth/social-login/google', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    provider: 'google',
-    accessToken: data.tokens.access_token,
-    userData: data.user
-  })
-});
-```
+### Événements disponibles
 
-## 🎨 Interface de Callback
+- `join_room` : Rejoindre un salon
+- `send_message` : Envoyer un message
+- `typing_start/stop` : Indicateurs de frappe
+- `new_message` : Nouveau message reçu
 
-Les pages de callback affichent :
-- ✅ **Succès** : Données reçues + bouton "Fermer cette page"
-- ❌ **Erreur** : Message d'erreur + bouton "Fermer"
-- 🔄 **Auto-fermeture** : Après 5 secondes en cas de succès
-
-## 📋 Variables d'Environnement
-
-- `STEAM_API_KEY` : Clé API Steam
-- `STEAM_RETURN_URL` : URL de retour Steam OAuth
-- `STEAM_REALM` : Domaine de l'application
-- `JWT_SECRET` : Secret JWT pour l'authentification
-
-## 🏗️ Structure du Projet
-
-```
-src/
-├── auth/           # Authentification JWT + OAuth simplifié
-│   ├── simple-oauth.service.ts    # Service OAuth simplifié
-│   ├── simple-oauth.controller.ts # Contrôleur OAuth
-│   └── auth.module.ts             # Module d'authentification
-├── users/          # Gestion des utilisateurs
-├── teams/          # Gestion des équipes
-├── rooms/          # Gestion des salons
-├── messages/       # Système de messagerie
-├── updates/        # Gestion des mises à jour
-├── health/         # Endpoints de santé
-├── websocket/      # Communication temps réel
-└── prisma/         # Service de base de données
-```
-
-## 🛠️ Technologies
-
-- **Framework**: NestJS
-- **Base de données**: SQLite + Prisma ORM
-- **Authentification**: JWT + OAuth simplifié
-- **Validation**: class-validator
-- **Sécurité**: Helmet, CORS, Rate Limiting
-- **WebSockets**: Socket.io
-
-## 📋 Prérequis
-
-- Node.js >= 18.0.0
-- npm >= 8.0.0
-
-## 🚀 Installation et Démarrage
+## 🧪 Tests
 
 ```bash
-npm install
-npm run start:dev
+# Lancer tous les tests
+npm test
+
+# Tests en mode watch
+npm run test:watch
+
+# Tests avec couverture
+npm run test:coverage
 ```
 
-## 🧪 Test OAuth
+## 📊 Monitoring
 
-### **Test Google**
-1. Ouvrir : `https://eterna-backend-ezru.onrender.com/api/oauth/google`
-2. Se connecter avec un compte Google
-3. Vérifier la page de callback
+### Health Check
 
-### **Test Steam**
-1. Ouvrir : `https://eterna-backend-ezru.onrender.com/api/oauth/steam`
-2. Se connecter avec un compte Steam
-3. Vérifier la page de callback
+```bash
+curl http://localhost:8080/api/health
+```
 
-## 📚 Documentation Frontend
+### Logs
 
-Voir `FRONTEND_OAUTH_IMPLEMENTATION.md` pour l'implémentation complète côté frontend.
+L'application utilise des logs structurés avec différents niveaux :
+- `info` : Informations générales
+- `warn` : Avertissements
+- `error` : Erreurs et exceptions
 
-## 🔄 Migration depuis l'Ancienne Version
+## 🤝 Contribution
 
-### **Supprimé**
-- ❌ Services OAuth complexes
-- ❌ Protocoles personnalisés `eterna://`
-- ❌ Détection automatique d'application desktop
-- ❌ Redirections complexes
+1. Fork le projet
+2. Créer une branche feature (`git checkout -b feature/AmazingFeature`)
+3. Commit les changements (`git commit -m 'Add some AmazingFeature'`)
+4. Push vers la branche (`git push origin feature/AmazingFeature`)
+5. Ouvrir une Pull Request
 
-### **Ajouté**
-- ✅ Service OAuth simplifié
-- ✅ Contrôleur OAuth unifié
-- ✅ Pages de callback HTML
-- ✅ Communication via postMessage
+## 📄 Licence
 
-Cette nouvelle approche est **beaucoup plus simple** et **fiable** que la précédente !
+Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+
+## 🆘 Support
+
+- **Documentation API** : `ENDPOINTS.md`
+- **Issues** : [GitHub Issues](https://github.com/RyanDPC/Eterna_BackEnd/issues)
+- **Discussions** : [GitHub Discussions](https://github.com/RyanDPC/Eterna_BackEnd/discussions)
+
+## 🙏 Remerciements
+
+- **Express.js** : Framework web rapide et minimaliste
+- **Prisma** : ORM moderne pour Node.js
+- **Socket.io** : Communication en temps réel
+- **Passport.js** : Authentification flexible
+
+---
+
+**Développé avec ❤️ par RyanDPC**
