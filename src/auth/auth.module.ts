@@ -7,12 +7,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { SocialAuthService } from './social-auth.service';
 import { RefreshTokenService } from './refresh-token.service';
-// import { GoogleOAuthService } from './google-oauth.service'; // Temporairement désactivé - fichier client-secret.json manquant
+import { GoogleOAuthService } from './google-oauth.service';
 import { SteamOAuthService } from './steam-oauth.service';
 
 // Controllers
 import { AuthController } from './auth.controller';
-// import { GoogleOAuthController } from './google-oauth.controller'; // Temporairement désactivé - fichier client-secret.json manquant
+import { GoogleOAuthController } from './google-oauth.controller';
 import { SteamOAuthController } from './steam-oauth.controller';
 
 // Strategies
@@ -47,13 +47,13 @@ import { EmailModule } from '../email/email.module';
     }),
     ConfigModule,
   ],
-  controllers: [AuthController, SteamOAuthController], // GoogleOAuthController temporairement désactivé
+  controllers: [AuthController, SteamOAuthController, GoogleOAuthController],
   providers: [
     // Services
     AuthService,
     SocialAuthService,
     RefreshTokenService,
-    // GoogleOAuthService, // Temporairement désactivé - fichier client-secret.json manquant
+    GoogleOAuthService,
     SteamOAuthService,
     
     // Strategies
@@ -68,7 +68,7 @@ import { EmailModule } from '../email/email.module';
     AuthService,
     SocialAuthService,
     RefreshTokenService,
-    // GoogleOAuthService, // Temporairement désactivé - fichier client-secret.json manquant
+    GoogleOAuthService,
     SteamOAuthService,
     JwtModule,
   ],

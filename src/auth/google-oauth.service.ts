@@ -36,15 +36,15 @@ export class GoogleOAuthService {
 
   private loadGoogleConfig() {
     try {
-      // Chemin vers le fichier client-secret.json à la racine du projet
-      const configPath = path.join(process.cwd(), 'client_secret_410003933277-md9pv9r15b06k6iprcl4gob6bi0p6rt0.apps.googleusercontent.com.json');
+      // Chemin vers le fichier client_secret.json à la racine du projet
+      const configPath = path.join(process.cwd(), 'client_secret.json');
       
       if (fs.existsSync(configPath)) {
         const configFile = fs.readFileSync(configPath, 'utf8');
         this.clientConfig = JSON.parse(configFile).web;
-        this.logger.log('Configuration Google OAuth2 chargée depuis le fichier client-secret.json');
+        this.logger.log('Configuration Google OAuth2 chargée depuis le fichier client_secret.json');
       } else {
-        throw new Error('Fichier client-secret.json introuvable');
+        throw new Error('Fichier client_secret.json introuvable');
       }
     } catch (error) {
       this.logger.error('Erreur lors du chargement de la configuration Google:', error);
@@ -68,15 +68,9 @@ export class GoogleOAuthService {
   }
 
   private getRedirectUri(): string {
-    // Détermine l'URI de redirection selon l'environnement
-    const nodeEnv = this.configService.get('NODE_ENV', 'development');
-    const isProduction = nodeEnv === 'production' || process.env.RENDER;
-
-    if (isProduction) {
-      return 'https://eterna-backend-ezru.onrender.com/api/auth/google/callback';
-    } else {
-      return 'http://localhost:8080/api/auth/google/callback';
-    }
+    // Utilise l'URI de redirection depuis la configuration Google
+    // Le fichier client_secret.json contient déjà les bons URIs
+    return this.clientConfig.redirect_uris[0]; // Premier URI par défaut
   }
 
   /**

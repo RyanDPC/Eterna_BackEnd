@@ -126,6 +126,8 @@ export class SteamOAuthController {
 
       this.logger.log(`Authentification Steam réussie pour: ${result.profile.personaname} (${result.steamid})`);
 
+      // Retourner JSON pour TOUS les clients (desktop et web)
+      // Le front-end/desktop gère sa propre interface
       return res.status(HttpStatus.OK).json(response);
 
     } catch (error) {
@@ -243,4 +245,6 @@ export class SteamOAuthController {
       throw new BadRequestException(error.message || 'Impossible de récupérer le profil Steam');
     }
   }
+
+
 }
