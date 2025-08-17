@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
+import { Logger } from '@nestjs/common';
 
 // Import des middlewares avec require pour éviter les problèmes d'import
 const helmet = require('helmet');
@@ -9,7 +10,9 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log', 'debug', 'verbose'], // Afficher tous les niveaux de log
+  });
 
   // Configuration du trust proxy pour Render
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
@@ -62,6 +65,12 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   });
+
+  // Configuration du logger global
+  const logger = new Logger('Main');
+  logger.log('🚀 [DEBUG] Application Eterna démarrée en mode DEBUG');
+  logger.log('🔍 [DEBUG] Tous les logs OAuth sont activés');
+  logger.log('📊 [DEBUG] Endpoint de debug disponible: /api/oauth/debug');
 
   // Port
   const port = process.env.PORT || 8080;
