@@ -410,6 +410,127 @@ export class SimpleOAuthController {
   }
 
   /**
+   * GET /oauth/user/:provider
+   * Récupère les vraies données utilisateur OAuth depuis les cookies
+   */
+  @Get('user/:provider')
+  async getOAuthUser(
+    @Param('provider') provider: 'google' | 'steam',
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    try {
+      this.logger.log(`👤 [DEBUG] Récupération des données utilisateur ${provider}`);
+      
+      // Récupérer les données depuis les cookies
+      const cookieName = `oauth_${provider}_data`;
+      const oauthDataCookie = req.cookies[cookieName];
+      
+      if (this.DEBUG_MODE) {
+        this.logger.debug('🍪 [DEBUG] Cookies disponibles:', {
+          provider: provider,
+          cookieName: cookieName,
+          hasCookie: !!oauthDataCookie,
+          allCookies: Object.keys(req.cookies)
+        });
+      }
+      
+      if (!oauthDataCookie) {
+        this.logger.error(`❌ [DEBUG] Données OAuth ${provider} non trouvées dans les cookies`);
+        return res.status(404).json({
+          success: false,
+          error: 'Données OAuth non trouvées',
+          provider: provider,
+          availableCookies: Object.keys(req.cookies)
+        });
+      }
+
+      let oauthData;
+      try {
+        oauthData = JSON.parse(oauthDataCookie);
+        
+        if (this.DEBUG_MODE) {
+          this.logger.debug('📊 [DEBUG] Données OAuth parsées:', {
+            provider: provider,
+            hasUser: !!oauthData.user,
+            hasTokens: !!oauthData.tokens,
+            userKeys: oauthData.user ? Object.keys(oauthData.user) : [],
+            dataSize: JSON.stringify(oauthData).length
+          });
+        }
+        
+      } catch (error) {
+        this.logger.error(`❌ [DEBUG] Erreur lors du parsing des données OAuth ${provider}:`, error);
+        return res.status(500).json({
+          success: false,
+          error: 'Données OAuth invalides',
+          provider: provider,
+          parseError: error.message
+        });
+      }
+
+      // Formater la réponse selon le provider
+      let userData;
+      if (provider === 'google') {
+        userData = {
+          provider: 'google',
+          userId: oauthData.user?.id,
+          email: oauthData.user?.email,
+          name: oauthData.user?.name,
+          picture: oauthData.user?.picture,
+          verifiedEmail: oauthData.user?.verified_email,
+          accessToken: oauthData.tokens?.access_token ? 'present' : 'missing',
+          refreshToken: oauthData.tokens?.refresh_token ? 'present' : 'missing',
+          tokenType: oauthData.tokens?.token_type,
+          expiresIn: oauthData.tokens?.expires_in
+        };
+      } else if (provider === 'steam') {
+        userData = {
+          provider: 'steam',
+          steamId: oauthData.user?.steamId,
+          username: oauthData.user?.username,
+          displayName: oauthData.user?.displayName,
+          avatar: oauthData.user?.avatar,
+          profileUrl: oauthData.user?.profileUrl,
+          realName: oauthData.user?.realName,
+          country: oauthData.user?.country,
+          status: oauthData.user?.status
+        };
+      } else {
+        throw new BadRequestException(`Provider ${provider} non supporté`);
+      }
+
+      this.logger.log(`✅ [DEBUG] Données utilisateur ${provider} récupérées avec succès`);
+      
+      // Nettoyer le cookie après récupération
+      res.clearCookie(cookieName);
+      
+      return res.json({
+        success: true,
+        message: `Données utilisateur ${provider} récupérées`,
+        provider: provider,
+        user: userData,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      this.logger.error(`❌ [DEBUG] Erreur lors de la récupération des données utilisateur ${provider}:`, error);
+      this.logger.error('📊 [DEBUG] Stack trace:', error.stack);
+      
+      return res.status(500).json({
+        success: false,
+        error: `Erreur lors de la récupération des données utilisateur ${provider}`,
+        message: error.message,
+        provider: provider,
+        debug: this.DEBUG_MODE ? {
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        } : undefined
+      });
+    }
+  }
+
+  /**
    * GET /oauth/debug
    * Endpoint de debug complet pour diagnostiquer les problèmes OAuth
    */
@@ -574,6 +695,12 @@ export class SimpleOAuthController {
             opacity: 0.8;
             margin-top: 15px;
           }
+          .countdown {
+            font-size: 18px;
+            font-weight: bold;
+            color: #4ade80;
+            margin: 10px 0;
+          }
         </style>
       </head>
       <body>
@@ -585,10 +712,11 @@ export class SimpleOAuthController {
           ${success ? `
             <div class="instructions">
               <strong>🎯 Prochaines étapes :</strong><br>
-              1. Fermez cette fenêtre d'authentification<br>
+              1. Cette fenêtre se fermera automatiquement dans <span id="countdown">5</span> secondes<br>
               2. Retournez dans Eterna<br>
               3. L'authentification se fera automatiquement
             </div>
+            <div class="countdown">⏰ Fermeture automatique en cours...</div>
           ` : ''}
           
           ${success && data ? `
@@ -598,8 +726,8 @@ export class SimpleOAuthController {
             </div>
           ` : ''}
           
-          <button class="close-btn" onclick="window.close()">
-            ${success ? 'Fermer cette fenêtre' : 'Fermer'}
+          <button class="close-btn" onclick="closeWindow()">
+            ${success ? 'Fermer maintenant' : 'Fermer'}
           </button>
           
           ${success ? `
@@ -609,40 +737,87 @@ export class SimpleOAuthController {
           ` : ''}
           
           <script>
+            // Variables globales
+            let countdown = 5;
+            let countdownInterval;
+            
+            // Fonction de fermeture de la fenêtre
+            function closeWindow() {
+              console.log('🔒 [DEBUG] Fermeture manuelle de la fenêtre');
+              if (window.opener) {
+                // Envoyer les données à la fenêtre parent avant de fermer
+                window.opener.postMessage({
+                  type: 'oauth_callback',
+                  provider: '${provider}',
+                  success: ${success},
+                  data: ${success && data ? JSON.stringify(data) : 'null'},
+                  message: '${message}',
+                  timestamp: new Date().toISOString()
+                }, '*');
+                
+                // Fermer la fenêtre
+                window.close();
+              } else {
+                // Si pas de fenêtre parent, rediriger vers la finalisation
+                window.location.href = '/api/oauth/finalize/${provider}';
+              }
+            }
+            
+            // Fonction de redirection automatique
+            function redirectToFinalize() {
+              console.log('🔄 [DEBUG] Redirection automatique vers la finalisation');
+              window.location.href = '/api/oauth/finalize/${provider}';
+            }
+            
+            // Gestion du compte à rebours
+            function startCountdown() {
+              countdownInterval = setInterval(() => {
+                countdown--;
+                document.getElementById('countdown').textContent = countdown;
+                
+                if (countdown <= 0) {
+                  clearInterval(countdownInterval);
+                  console.log('⏰ [DEBUG] Compte à rebours terminé, fermeture automatique');
+                  closeWindow();
+                }
+              }, 1000);
+            }
+            
             // Envoyer les données à l'application parent si elle existe
             if (window.opener && window.opener.postMessage) {
+              console.log('📤 [DEBUG] Envoi des données à la fenêtre parent');
               window.opener.postMessage({
                 type: 'oauth_callback',
                 provider: '${provider}',
                 success: ${success},
                 data: ${success && data ? JSON.stringify(data) : 'null'},
-                message: '${message}'
+                message: '${message}',
+                timestamp: new Date().toISOString()
               }, '*');
             }
             
-            // Redirection automatique vers /chat après 3 secondes si succès
+            // Démarrer le compte à rebours si succès
             ${success ? `
+              console.log('🚀 [DEBUG] Démarrage du compte à rebours automatique');
+              startCountdown();
+              
+              // Redirection automatique vers la finalisation après 3 secondes
               setTimeout(() => {
-                // Rediriger vers /chat avec les données OAuth
-                window.location.href = '/api/oauth/finalize/${provider}?code=${success && data ? encodeURIComponent(JSON.stringify(data)) : ''}';
+                console.log('🔄 [DEBUG] Redirection automatique vers la finalisation');
+                redirectToFinalize();
               }, 3000);
             ` : ''}
             
-            // Auto-fermeture après 5 secondes si succès
-            ${success ? `
-              setTimeout(() => {
-                if (window.opener) {
-                  window.close();
-                }
-              }, 5000);
-            ` : ''}
+            // Logs de debug
+            console.log('🔍 [DEBUG] Page de callback ${provider} chargée');
+            console.log('📊 [DEBUG] Statut:', ${success ? 'true' : 'false'});
+            console.log('📋 [DEBUG] Données:', ${success && data ? JSON.stringify(data) : 'null'});
             
             // Empêcher l'affichage de messages de succès prématurés
             if (!${success}) {
-              // En cas d'erreur, ne pas envoyer de message de succès
-              console.log('Authentification ${provider} échouée: ${message}');
+              console.log('❌ [DEBUG] Authentification ${provider} échouée: ${message}');
             } else {
-              console.log('Authentification ${provider} réussie, redirection en cours...');
+              console.log('✅ [DEBUG] Authentification ${provider} réussie, processus automatique en cours...');
             }
           </script>
         </div>

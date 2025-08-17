@@ -59,7 +59,7 @@ export class SimpleOAuthService {
         this.config = {
           google: {
             clientId: googleConfig.client_id,
-            redirectUri: googleConfig.redirect_uris[0], // Utiliser l'URL existante
+            redirectUri: 'https://eterna-backend-ezru.onrender.com/api/oauth/google/callback', // Forcer l'URL de production
             scope: 'email profile'
           },
           steam: {
