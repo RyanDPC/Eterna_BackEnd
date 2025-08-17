@@ -96,14 +96,45 @@ export class SteamOAuthController {
       // Détecter si c'est une application desktop (basé sur les paramètres personnalisés ou l'User-Agent)
       const userAgent = query.userAgent || '';
       const isDesktopAppParam = query.isDesktopApp === 'true';
-      const isDesktopApp = isDesktopAppParam || userAgent.includes('Eterna') || userAgent.includes('Desktop') || !userAgent.includes('Mozilla');
+      let isDesktopApp = isDesktopAppParam;
+      
+      // Si pas détecté via paramètre, utiliser la logique de détection avancée
+      if (!isDesktopApp) {
+        // Vérifier les paramètres explicites
+        if (query.userAgent?.includes('Eterna')) {
+          isDesktopApp = true;
+        }
+        // Vérifier l'User-Agent HTTP (si disponible)
+        else if (userAgent && (
+          userAgent.includes('Eterna') || 
+          userAgent.includes('Desktop') || 
+          userAgent.includes('Electron') ||
+          userAgent.includes('Tauri') ||
+          !userAgent.includes('Mozilla') ||
+          userAgent.includes('Chrome') && userAgent.includes('Electron')
+        )) {
+          isDesktopApp = true;
+        }
+        // Vérifier l'URL de retour (si elle contient des indices d'application desktop)
+        else if (query.returnUrl && (
+          query.returnUrl.includes('localhost') ||
+          query.returnUrl.includes('127.0.0.1') ||
+          query.returnUrl.includes('eterna://')
+        )) {
+          isDesktopApp = true;
+        }
+      }
+
+      this.logger.log(`Type d'application détecté: ${isDesktopApp ? 'Desktop' : 'Web'}`);
 
       if (isDesktopApp) {
         // Rediriger vers l'application desktop avec les données d'authentification
         const redirectUrl = `eterna://auth/steam?success=true&steamid=${result.steamid}&username=${encodeURIComponent(result.profile.personaname)}`;
+        this.logger.log(`Redirection vers application desktop: ${redirectUrl}`);
         return res.redirect(redirectUrl);
       } else {
         // Pour les applications web, retourner JSON
+        this.logger.log('Retour JSON pour application web');
         const response = {
           success: true,
           message: 'Authentification Steam réussie',

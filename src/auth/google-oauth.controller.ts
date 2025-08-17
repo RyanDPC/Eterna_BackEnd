@@ -98,17 +98,43 @@ export class GoogleOAuthController {
         }
       }
 
-      // Fallback: détecter si c'est une application desktop
-      if (!isDesktopApp && userAgent) {
-        isDesktopApp = userAgent.includes('Eterna') || userAgent.includes('Desktop') || !userAgent.includes('Mozilla');
+      // Fallback: détecter si c'est une application desktop avec plus de critères
+      if (!isDesktopApp) {
+        // Vérifier les paramètres explicites
+        if (query.isDesktopApp === 'true' || query.userAgent?.includes('Eterna')) {
+          isDesktopApp = true;
+        }
+        // Vérifier l'User-Agent HTTP (si disponible)
+        else if (userAgent && (
+          userAgent.includes('Eterna') || 
+          userAgent.includes('Desktop') || 
+          userAgent.includes('Electron') ||
+          userAgent.includes('Tauri') ||
+          !userAgent.includes('Mozilla') ||
+          userAgent.includes('Chrome') && userAgent.includes('Electron')
+        )) {
+          isDesktopApp = true;
+        }
+        // Vérifier l'URL de retour (si elle contient des indices d'application desktop)
+        else if (query.returnUrl && (
+          query.returnUrl.includes('localhost') ||
+          query.returnUrl.includes('127.0.0.1') ||
+          query.returnUrl.includes('eterna://')
+        )) {
+          isDesktopApp = true;
+        }
       }
+
+      this.logger.log(`Type d'application détecté: ${isDesktopApp ? 'Desktop' : 'Web'}`);
 
       if (isDesktopApp) {
         // Rediriger vers l'application desktop avec les données d'authentification
         const redirectUrl = `eterna://auth/google?success=true&email=${encodeURIComponent(result.profile.email)}&name=${encodeURIComponent(result.profile.name)}&id=${result.profile.id}`;
+        this.logger.log(`Redirection vers application desktop: ${redirectUrl}`);
         return res.redirect(redirectUrl);
       } else {
         // Pour les applications web, retourner JSON
+        this.logger.log('Retour JSON pour application web');
         const response = {
           success: true,
           message: 'Authentification Google réussie',
