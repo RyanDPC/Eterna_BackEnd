@@ -611,6 +611,19 @@ export class SimpleOAuthController {
     message: string, 
     data?: any
   ) {
+    this.logger.log(`🎨 [DEBUG] Rendu de la page de callback ${provider}`);
+    this.logger.log(`📊 [DEBUG] Statut: ${success}, Message: ${message}`);
+    
+    if (this.DEBUG_MODE) {
+      this.logger.debug('📋 [DEBUG] Données pour le rendu:', {
+        provider: provider,
+        success: success,
+        message: message,
+        hasData: !!data,
+        dataKeys: data ? Object.keys(data) : []
+      });
+    }
+
     const html = `
       <!DOCTYPE html>
       <html lang="fr">
@@ -701,23 +714,51 @@ export class SimpleOAuthController {
             color: #4ade80;
             margin: 10px 0;
           }
+          .debug-info {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 11px;
+            font-family: monospace;
+            text-align: left;
+          }
+          .status-indicator {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 4px solid #fbbf24;
+          }
         </style>
       </head>
       <body>
         <div class="container">
-          <div class="icon">${success ? '✅' : '❌'}</div>
+          <div class="icon">${success ? '✅' : '⏳'}</div>
           <div class="provider-name">${provider === 'google' ? 'Google' : 'Steam'}</div>
           <div class="message ${success ? 'success' : 'error'}">${message}</div>
           
+          <div class="debug-info">
+            🔍 DEBUG: Page chargée à ${new Date().toLocaleTimeString()}<br>
+            📱 Provider: ${provider}<br>
+            ✅ Succès: ${success}<br>
+            🍪 Cookie: oauth_${provider}_data
+          </div>
+          
           ${success ? `
             <div class="instructions">
-              <strong>🎯 Prochaines étapes :</strong><br>
-              1. Cette fenêtre se fermera automatiquement dans <span id="countdown">5</span> secondes<br>
+              <strong>🎯 Authentification réussie !</strong><br>
+              1. Cette fenêtre se fermera automatiquement dans <span id="countdown">10</span> secondes<br>
               2. Retournez dans Eterna<br>
               3. L'authentification se fera automatiquement
             </div>
             <div class="countdown">⏰ Fermeture automatique en cours...</div>
-          ` : ''}
+          ` : `
+            <div class="status-indicator">
+              <strong>⏳ Authentification en cours...</strong><br>
+              Veuillez patienter pendant que nous traitons votre demande.
+            </div>
+          `}
           
           ${success && data ? `
             <div class="data">
@@ -732,33 +773,82 @@ export class SimpleOAuthController {
           
           ${success ? `
             <div class="auto-close">
-              ⏰ Cette fenêtre se fermera automatiquement dans 5 secondes
+              ⏰ Cette fenêtre se fermera automatiquement dans 10 secondes
             </div>
           ` : ''}
           
           <script>
+            console.log('🚀 [DEBUG] Script de callback ${provider} chargé');
+            console.log('📊 [DEBUG] Statut:', ${success ? 'true' : 'false'});
+            console.log('📋 [DEBUG] Données:', ${success && data ? JSON.stringify(data) : 'null'});
+            
             // Variables globales
-            let countdown = 5;
+            let countdown = ${success ? '10' : '0'};
             let countdownInterval;
+            let isAuthenticated = ${success};
+            let autoCloseEnabled = ${success};
+            let heartbeatInterval;
+            
+            // Signal de "vie" pour le frontend
+            function sendHeartbeat() {
+              if (window.opener && window.opener.postMessage) {
+                try {
+                  window.opener.postMessage({
+                    type: 'oauth_heartbeat',
+                    provider: '${provider}',
+                    timestamp: new Date().toISOString(),
+                    status: 'alive'
+                  }, '*');
+                } catch (error) {
+                  console.log('⚠️ [DEBUG] Erreur lors de l\'envoi du heartbeat:', error);
+                }
+              }
+            }
+            
+            // Démarrer le signal de "vie" toutes les 2 secondes
+            function startHeartbeat() {
+              console.log('💓 [DEBUG] Démarrage du signal de vie');
+              heartbeatInterval = setInterval(sendHeartbeat, 2000);
+            }
+            
+            // Arrêter le signal de "vie"
+            function stopHeartbeat() {
+              if (heartbeatInterval) {
+                console.log('💓 [DEBUG] Arrêt du signal de vie');
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+              }
+            }
             
             // Fonction de fermeture de la fenêtre
             function closeWindow() {
-              console.log('🔒 [DEBUG] Fermeture manuelle de la fenêtre');
-              if (window.opener) {
+              console.log('🔒 [DEBUG] Fermeture de la fenêtre');
+              
+              // Arrêter le signal de "vie"
+              stopHeartbeat();
+              
+              if (window.opener && window.opener.postMessage) {
                 // Envoyer les données à la fenêtre parent avant de fermer
-                window.opener.postMessage({
-                  type: 'oauth_callback',
-                  provider: '${provider}',
-                  success: ${success},
-                  data: ${success && data ? JSON.stringify(data) : 'null'},
-                  message: '${message}',
-                  timestamp: new Date().toISOString()
-                }, '*');
+                console.log('📤 [DEBUG] Envoi des données à la fenêtre parent');
+                try {
+                  window.opener.postMessage({
+                    type: 'oauth_callback',
+                    provider: '${provider}',
+                    success: ${success},
+                    data: ${success && data ? JSON.stringify(data) : 'null'},
+                    message: '${message}',
+                    timestamp: new Date().toISOString()
+                  }, '*');
+                } catch (error) {
+                  console.log('⚠️ [DEBUG] Erreur lors de l\'envoi des données:', error);
+                }
                 
                 // Fermer la fenêtre
+                console.log('🔒 [DEBUG] Fermeture de la fenêtre');
                 window.close();
               } else {
                 // Si pas de fenêtre parent, rediriger vers la finalisation
+                console.log('🔄 [DEBUG] Pas de fenêtre parent, redirection vers finalisation');
                 window.location.href = '/api/oauth/finalize/${provider}';
               }
             }
@@ -769,11 +859,21 @@ export class SimpleOAuthController {
               window.location.href = '/api/oauth/finalize/${provider}';
             }
             
-            // Gestion du compte à rebours
+            // Gestion du compte à rebours (seulement si authentifié)
             function startCountdown() {
+              if (!isAuthenticated) {
+                console.log('⚠️ [DEBUG] Compte à rebours désactivé - pas encore authentifié');
+                return;
+              }
+              
+              console.log('⏰ [DEBUG] Démarrage du compte à rebours');
               countdownInterval = setInterval(() => {
                 countdown--;
-                document.getElementById('countdown').textContent = countdown;
+                const countdownElement = document.getElementById('countdown');
+                if (countdownElement) {
+                  countdownElement.textContent = countdown;
+                }
+                console.log('⏰ [DEBUG] Compte à rebours:', countdown);
                 
                 if (countdown <= 0) {
                   clearInterval(countdownInterval);
@@ -783,35 +883,74 @@ export class SimpleOAuthController {
               }, 1000);
             }
             
+            // Vérifier périodiquement si l'authentification est terminée
+            function checkAuthenticationStatus() {
+              console.log('🔍 [DEBUG] Vérification du statut d\'authentification...');
+              
+              // Si on a des données, on considère que l'authentification est réussie
+              if (${success && data ? 'true' : 'false'}) {
+                console.log('✅ [DEBUG] Authentification confirmée, activation de la fermeture auto');
+                isAuthenticated = true;
+                autoCloseEnabled = true;
+                
+                // Démarrer le compte à rebours
+                startCountdown();
+                
+                // Redirection automatique après 5 secondes
+                setTimeout(() => {
+                  console.log('🔄 [DEBUG] Redirection automatique vers la finalisation');
+                  redirectToFinalize();
+                }, 5000);
+                
+                return;
+              }
+              
+              // Si pas encore authentifié, continuer à vérifier
+              console.log('⏳ [DEBUG] Pas encore authentifié, nouvelle vérification dans 2 secondes');
+              setTimeout(checkAuthenticationStatus, 2000);
+            }
+            
             // Envoyer les données à l'application parent si elle existe
             if (window.opener && window.opener.postMessage) {
               console.log('📤 [DEBUG] Envoi des données à la fenêtre parent');
-              window.opener.postMessage({
-                type: 'oauth_callback',
-                provider: '${provider}',
-                success: ${success},
-                data: ${success && data ? JSON.stringify(data) : 'null'},
-                message: '${message}',
-                timestamp: new Date().toISOString()
-              }, '*');
+              try {
+                window.opener.postMessage({
+                  type: 'oauth_callback',
+                  provider: '${provider}',
+                  success: ${success},
+                  data: ${success && data ? JSON.stringify(data) : 'null'},
+                  message: '${message}',
+                  timestamp: new Date().toISOString()
+                }, '*');
+              } catch (error) {
+                console.log('⚠️ [DEBUG] Erreur lors de l\'envoi des données:', error);
+              }
             }
             
-            // Démarrer le compte à rebours si succès
-            ${success ? `
-              console.log('🚀 [DEBUG] Démarrage du compte à rebours automatique');
+            // Démarrer le signal de "vie" immédiatement
+            startHeartbeat();
+            
+            // Démarrer la vérification d'authentification
+            if (!isAuthenticated) {
+              console.log('🔍 [DEBUG] Démarrage de la vérification d\'authentification');
+              setTimeout(checkAuthenticationStatus, 2000);
+            } else {
+              console.log('✅ [DEBUG] Déjà authentifié, démarrage du compte à rebours');
               startCountdown();
               
-              // Redirection automatique vers la finalisation après 3 secondes
+              // Redirection automatique après 5 secondes
               setTimeout(() => {
                 console.log('🔄 [DEBUG] Redirection automatique vers la finalisation');
                 redirectToFinalize();
-              }, 3000);
-            ` : ''}
+              }, 5000);
+            }
             
             // Logs de debug
             console.log('🔍 [DEBUG] Page de callback ${provider} chargée');
             console.log('📊 [DEBUG] Statut:', ${success ? 'true' : 'false'});
             console.log('📋 [DEBUG] Données:', ${success && data ? JSON.stringify(data) : 'null'});
+            console.log('🔒 [DEBUG] Fermeture auto activée:', autoCloseEnabled);
+            console.log('💓 [DEBUG] Signal de vie activé');
             
             // Empêcher l'affichage de messages de succès prématurés
             if (!${success}) {
@@ -819,12 +958,31 @@ export class SimpleOAuthController {
             } else {
               console.log('✅ [DEBUG] Authentification ${provider} réussie, processus automatique en cours...');
             }
+            
+            // Fallback de sécurité : fermeture forcée après 30 secondes maximum
+            setTimeout(() => {
+              console.log('⚠️ [DEBUG] Fallback de sécurité: Fermeture forcée après 30 secondes');
+              if (window.opener) {
+                window.close();
+              }
+            }, 30000);
+            
+            // Nettoyer les intervalles lors de la fermeture de la page
+            window.addEventListener('beforeunload', () => {
+              console.log('🧹 [DEBUG] Nettoyage des intervalles');
+              stopHeartbeat();
+              if (countdownInterval) {
+                clearInterval(countdownInterval);
+              }
+            });
           </script>
         </div>
       </body>
       </html>
     `;
 
+    this.logger.log(`🎨 [DEBUG] Page de callback ${provider} rendue avec succès`);
+    
     res.setHeader('Content-Type', 'text/html');
     return res.send(html);
   }
