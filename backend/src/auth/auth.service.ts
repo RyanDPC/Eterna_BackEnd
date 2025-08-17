@@ -35,7 +35,6 @@ export class AuthService {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
-    // Mettre à jour le statut en ligne
     await this.prisma.user.update({
       where: { id: user.id },
       data: { isOnline: true, lastSeen: new Date() },
@@ -59,7 +58,6 @@ export class AuthService {
   }
 
   async register(createUserDto: CreateUserDto) {
-    // Vérifier si l'utilisateur existe déjà
     const existingUser = await this.prisma.user.findFirst({
       where: {
         OR: [
@@ -73,13 +71,11 @@ export class AuthService {
       throw new ConflictException('Un utilisateur avec cet email ou nom d\'utilisateur existe déjà');
     }
 
-    // Hasher le mot de passe
     const hashedPassword = await bcrypt.hash(
       createUserDto.password,
       parseInt(this.configService.get('BCRYPT_ROUNDS', '12')),
     );
 
-    // Créer l'utilisateur
     const user = await this.prisma.user.create({
       data: {
         email: createUserDto.email,
@@ -91,7 +87,6 @@ export class AuthService {
       include: { profile: true },
     });
 
-    // Créer le profil utilisateur
     if (createUserDto.firstName || createUserDto.lastName) {
       await this.prisma.userProfile.create({
         data: {

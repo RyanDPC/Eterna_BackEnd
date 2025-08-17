@@ -4,18 +4,6 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "webpack": true,
-    "tsConfigPath": "tsconfig.json"
-  },
-  "projects": {
-    "eterna-backend": {
-      "type": "application",
-      "root": "apps/eterna-backend",
-      "entryFile": "main",
-      "sourceRoot": "apps/eterna-backend/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/eterna-backend/tsconfig.app.json"
-      }
-    }
+    "webpack": false
   }
 }

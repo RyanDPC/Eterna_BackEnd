@@ -2,23 +2,16 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
-import { TeamRole } from '@prisma/client';
 
 @Injectable()
 export class TeamsService {
   constructor(private prisma: PrismaService) {}
 
-  async createTeam(createTeamDto: CreateTeamDto, userId: string) {
+  async create(createTeamDto: CreateTeamDto, userId: string) {
     const team = await this.prisma.team.create({
       data: {
         ...createTeamDto,
         ownerId: userId,
-        members: {
-          create: {
-            userId,
-            role: TeamRole.OWNER,
-          },
-        },
       },
       include: {
         owner: {
@@ -35,49 +28,33 @@ export class TeamsService {
                 id: true,
                 username: true,
                 avatar: true,
-                isOnline: true,
               },
             },
           },
         },
+      },
+    });
+
+    await this.prisma.teamMember.create({
+      data: {
+        userId,
+        teamId: team.id,
+        role: 'OWNER',
       },
     });
 
     return team;
   }
 
-  async findAllTeams(userId: string) {
-    const teams = await this.prisma.team.findMany({
-      where: {
-        OR: [
-          { isPublic: true },
-          {
-            members: {
-              some: {
-                userId,
-              },
-            },
-          },
-        ],
-      },
+  async findAll() {
+    return this.prisma.team.findMany({
+      where: { isPublic: true },
       include: {
         owner: {
           select: {
             id: true,
             username: true,
             avatar: true,
-          },
-        },
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-                isOnline: true,
-              },
-            },
           },
         },
         _count: {
@@ -88,13 +65,11 @@ export class TeamsService {
         },
       },
     });
-
-    return teams;
   }
 
-  async findTeamById(teamId: string, userId: string) {
+  async findOne(id: string) {
     const team = await this.prisma.team.findUnique({
-      where: { id: teamId },
+      where: { id },
       include: {
         owner: {
           select: {
@@ -110,25 +85,21 @@ export class TeamsService {
                 id: true,
                 username: true,
                 avatar: true,
-                isOnline: true,
               },
             },
           },
         },
         rooms: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            isPrivate: true,
             _count: {
               select: {
                 members: true,
-                messages: true,
               },
             },
-          },
-        },
-        _count: {
-          select: {
-            members: true,
-            rooms: true,
           },
         },
       },
@@ -138,32 +109,19 @@ export class TeamsService {
       throw new NotFoundException('Équipe non trouvée');
     }
 
-    // Vérifier si l'utilisateur est membre de l'équipe
-    const isMember = team.members.some(member => member.userId === userId);
-    if (!team.isPublic && !isMember) {
-      throw new ForbiddenException('Accès non autorisé à cette équipe');
-    }
-
     return team;
   }
 
-  async updateTeam(teamId: string, updateTeamDto: UpdateTeamDto, userId: string) {
-    // Vérifier si l'utilisateur est propriétaire ou admin de l'équipe
-    const teamMember = await this.prisma.teamMember.findUnique({
-      where: {
-        userId_teamId: {
-          userId,
-          teamId,
-        },
-      },
-    });
-
-    if (!teamMember || (teamMember.role !== TeamRole.OWNER && teamMember.role !== TeamRole.ADMIN)) {
-      throw new ForbiddenException('Permissions insuffisantes pour modifier cette équipe');
+  async update(id: string, updateTeamDto: UpdateTeamDto, userId: string) {
+    const team = await this.findOne(id);
+    
+    const member = team.members.find(m => m.user.id === userId);
+    if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+      throw new ForbiddenException('Vous n\'avez pas les permissions pour modifier cette équipe');
     }
 
-    const updatedTeam = await this.prisma.team.update({
-      where: { id: teamId },
+    return this.prisma.team.update({
+      where: { id },
       data: updateTeamDto,
       include: {
         owner: {
@@ -180,95 +138,44 @@ export class TeamsService {
                 id: true,
                 username: true,
                 avatar: true,
-                isOnline: true,
               },
             },
           },
         },
       },
     });
-
-    return updatedTeam;
   }
 
-  async deleteTeam(teamId: string, userId: string) {
-    // Vérifier si l'utilisateur est propriétaire de l'équipe
-    const team = await this.prisma.team.findUnique({
-      where: { id: teamId },
-      include: {
-        members: true,
-      },
-    });
-
-    if (!team) {
-      throw new NotFoundException('Équipe non trouvée');
-    }
-
-    if (team.ownerId !== userId) {
+  async remove(id: string, userId: string) {
+    const team = await this.findOne(id);
+    
+    if (team.owner.id !== userId) {
       throw new ForbiddenException('Seul le propriétaire peut supprimer l\'équipe');
     }
 
-    // Supprimer l'équipe (cascade automatique via Prisma)
-    await this.prisma.team.delete({
-      where: { id: teamId },
+    return this.prisma.team.delete({
+      where: { id },
     });
-
-    return { message: 'Équipe supprimée avec succès' };
   }
 
-  async addMemberToTeam(teamId: string, memberEmail: string, role: TeamRole, userId: string) {
-    // Vérifier si l'utilisateur est propriétaire ou admin de l'équipe
-    const teamMember = await this.prisma.teamMember.findUnique({
-      where: {
-        userId_teamId: {
-          userId,
-          teamId,
-        },
-      },
-    });
-
-    if (!teamMember || (teamMember.role !== TeamRole.OWNER && teamMember.role !== TeamRole.ADMIN)) {
-      throw new ForbiddenException('Permissions insuffisantes pour ajouter des membres');
+  async addMember(teamId: string, memberId: string, role: string, userId: string) {
+    const team = await this.findOne(teamId);
+    
+    const member = team.members.find(m => m.user.id === userId);
+    if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+      throw new ForbiddenException('Vous n\'avez pas les permissions pour ajouter des membres');
     }
 
-    // Vérifier si l'équipe existe
-    const team = await this.prisma.team.findUnique({
-      where: { id: teamId },
-    });
-
-    if (!team) {
-      throw new NotFoundException('Équipe non trouvée');
-    }
-
-    // Trouver l'utilisateur par email
-    const user = await this.prisma.user.findUnique({
-      where: { email: memberEmail },
-    });
-
-    if (!user) {
-      throw new NotFoundException('Utilisateur non trouvé');
-    }
-
-    // Vérifier si l'utilisateur est déjà membre
-    const existingMember = await this.prisma.teamMember.findUnique({
-      where: {
-        userId_teamId: {
-          userId: user.id,
-          teamId,
-        },
-      },
-    });
-
+    const existingMember = team.members.find(m => m.user.id === memberId);
     if (existingMember) {
-      throw new ForbiddenException('L\'utilisateur est déjà membre de cette équipe');
+      throw new ForbiddenException('Cet utilisateur est déjà membre de l\'équipe');
     }
 
-    // Ajouter le membre
-    const newMember = await this.prisma.teamMember.create({
+    return this.prisma.teamMember.create({
       data: {
-        userId: user.id,
+        userId: memberId,
         teamId,
-        role,
+        role: role as any,
       },
       include: {
         user: {
@@ -276,32 +183,25 @@ export class TeamsService {
             id: true,
             username: true,
             avatar: true,
-            isOnline: true,
           },
         },
       },
     });
-
-    return newMember;
   }
 
-  async removeMemberFromTeam(teamId: string, memberId: string, userId: string) {
-    // Vérifier si l'utilisateur est propriétaire ou admin de l'équipe
-    const teamMember = await this.prisma.teamMember.findUnique({
-      where: {
-        userId_teamId: {
-          userId,
-          teamId,
-        },
-      },
-    });
-
-    if (!teamMember || (teamMember.role !== TeamRole.OWNER && teamMember.role !== TeamRole.ADMIN)) {
-      throw new ForbiddenException('Permissions insuffisantes pour supprimer des membres');
+  async removeMember(teamId: string, memberId: string, userId: string) {
+    const team = await this.findOne(teamId);
+    
+    const member = team.members.find(m => m.user.id === userId);
+    if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+      throw new ForbiddenException('Vous n\'avez pas les permissions pour supprimer des membres');
     }
 
-    // Vérifier si le membre à supprimer existe
-    const memberToRemove = await this.prisma.teamMember.findUnique({
+    if (team.owner.id === memberId) {
+      throw new ForbiddenException('Le propriétaire ne peut pas être supprimé de l\'équipe');
+    }
+
+    return this.prisma.teamMember.delete({
       where: {
         userId_teamId: {
           userId: memberId,
@@ -309,117 +209,32 @@ export class TeamsService {
         },
       },
     });
-
-    if (!memberToRemove) {
-      throw new NotFoundException('Membre non trouvé dans cette équipe');
-    }
-
-    // Empêcher la suppression du propriétaire
-    if (memberToRemove.role === TeamRole.OWNER) {
-      throw new ForbiddenException('Impossible de supprimer le propriétaire de l\'équipe');
-    }
-
-    // Supprimer le membre
-    await this.prisma.teamMember.delete({
-      where: {
-        userId_teamId: {
-          userId: memberId,
-          teamId,
-        },
-      },
-    });
-
-    return { message: 'Membre supprimé avec succès' };
   }
 
-  async updateMemberRole(teamId: string, memberId: string, newRole: TeamRole, userId: string) {
-    // Vérifier si l'utilisateur est propriétaire de l'équipe
-    const teamMember = await this.prisma.teamMember.findUnique({
+  async getUserTeams(userId: string) {
+    return this.prisma.team.findMany({
       where: {
-        userId_teamId: {
-          userId,
-          teamId,
+        members: {
+          some: {
+            userId,
+          },
         },
       },
-    });
-
-    if (!teamMember || teamMember.role !== TeamRole.OWNER) {
-      throw new ForbiddenException('Seul le propriétaire peut modifier les rôles');
-    }
-
-    // Vérifier si le membre existe
-    const memberToUpdate = await this.prisma.teamMember.findUnique({
-      where: {
-        userId_teamId: {
-          userId: memberId,
-          teamId,
-        },
-      },
-    });
-
-    if (!memberToUpdate) {
-      throw new NotFoundException('Membre non trouvé dans cette équipe');
-    }
-
-    // Empêcher la modification du rôle du propriétaire
-    if (memberToUpdate.role === TeamRole.OWNER) {
-      throw new ForbiddenException('Impossible de modifier le rôle du propriétaire');
-    }
-
-    // Mettre à jour le rôle
-    const updatedMember = await this.prisma.teamMember.update({
-      where: {
-        userId_teamId: {
-          userId: memberId,
-          teamId,
-        },
-      },
-      data: { role: newRole },
       include: {
-        user: {
+        owner: {
           select: {
             id: true,
             username: true,
             avatar: true,
-            isOnline: true,
+          },
+        },
+        _count: {
+          select: {
+            members: true,
+            rooms: true,
           },
         },
       },
     });
-
-    return updatedMember;
-  }
-
-  async leaveTeam(teamId: string, userId: string) {
-    // Vérifier si l'utilisateur est membre de l'équipe
-    const teamMember = await this.prisma.teamMember.findUnique({
-      where: {
-        userId_teamId: {
-          userId,
-          teamId,
-        },
-      },
-    });
-
-    if (!teamMember) {
-      throw new NotFoundException('Vous n\'êtes pas membre de cette équipe');
-    }
-
-    // Empêcher le propriétaire de quitter l'équipe
-    if (teamMember.role === TeamRole.OWNER) {
-      throw new ForbiddenException('Le propriétaire ne peut pas quitter l\'équipe. Transférez d\'abord la propriété.');
-    }
-
-    // Quitter l'équipe
-    await this.prisma.teamMember.delete({
-      where: {
-        userId_teamId: {
-          userId,
-          teamId,
-        },
-      },
-    });
-
-    return { message: 'Vous avez quitté l\'équipe avec succès' };
   }
 }

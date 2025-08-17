@@ -1,190 +1,287 @@
-import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
-import { SimpleRoom, SimpleRoomMember, SimpleUser } from './types/room.types';
 
 @Injectable()
 export class RoomsService {
-  // 🌸 Stockage en mémoire temporaire
-  private rooms: SimpleRoom[] = [];
-  private roomCounter = 1;
+  constructor(private prisma: PrismaService) {}
 
-  // 🌸 Créer un nouveau salon
-  async createRoom(createRoomDto: CreateRoomDto, userId: string): Promise<SimpleRoom> {
-    // Vérifier si un salon avec ce nom existe déjà
-    const existingRoom = this.rooms.find(room => room.name === createRoomDto.name);
-    if (existingRoom) {
-      throw new ConflictException('Un salon avec ce nom existe déjà');
-    }
-
-    // Créer le salon
-    const newRoom: SimpleRoom = {
-      id: `room_${this.roomCounter++}`,
-      name: createRoomDto.name,
-      description: createRoomDto.description || '',
-      isPrivate: createRoomDto.isPrivate || false,
-      isVoice: createRoomDto.isVoice || false,
-      maxMembers: createRoomDto.maxMembers || 50,
-      createdBy: userId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      members: [
-        {
-          id: `member_${Date.now()}`,
-          userId: userId,
-          role: 'OWNER',
-          joinedAt: new Date(),
-          user: {
-            id: userId,
-            username: `user_${userId}`,
-            status: 'En ligne',
+  async create(createRoomDto: CreateRoomDto, userId: string) {
+    const room = await this.prisma.room.create({
+      data: {
+        ...createRoomDto,
+        ownerId: userId,
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
           },
         },
-      ],
-    };
+        team: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+          },
+        },
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
-    this.rooms.push(newRoom);
-    return newRoom;
-  }
-
-  // 🌸 Récupérer tous les salons de l'utilisateur
-  async getUserRooms(userId: string): Promise<SimpleRoom[]> {
-    return this.rooms.filter(room =>
-      room.members.some(member => member.userId === userId)
-    );
-  }
-
-  // 🌸 Récupérer les salons disponibles (publics)
-  async getAvailableRooms(userId: string): Promise<SimpleRoom[]> {
-    return this.rooms.filter(room =>
-      !room.isPrivate &&
-      !room.members.some(member => member.userId === userId)
-    );
-  }
-
-  // 🌸 Rejoindre un salon
-  async joinRoom(joinRoomDto: JoinRoomDto, userId: string): Promise<SimpleRoom> {
-    const room = this.rooms.find(r => r.id === joinRoomDto.roomId);
-    if (!room) {
-      throw new NotFoundException('Salon non trouvé');
-    }
-
-    if (room.isPrivate) {
-      throw new ForbiddenException('Ce salon est privé et nécessite une invitation');
-    }
-
-    // Vérifier si l'utilisateur est déjà membre
-    const existingMember = room.members.find(member => member.userId === userId);
-    if (existingMember) {
-      throw new ConflictException('Vous êtes déjà membre de ce salon');
-    }
-
-    // Vérifier la limite de membres
-    if (room.members.length >= room.maxMembers) {
-      throw new ForbiddenException('Ce salon a atteint sa limite de membres');
-    }
-
-    // Ajouter l'utilisateur au salon
-         const newMember: SimpleRoomMember = {
-       id: `member_${Date.now()}`,
-       userId: userId,
-       role: 'MEMBER',
-       joinedAt: new Date(),
-       user: {
-         id: userId,
-         username: `user_${userId}`,
-         status: 'En ligne',
-       },
-     };
-
-    room.members.push(newMember);
-    room.updatedAt = new Date();
+    await this.prisma.roomMember.create({
+      data: {
+        userId,
+        roomId: room.id,
+        role: 'OWNER',
+      },
+    });
 
     return room;
   }
 
-  // 🌸 Quitter un salon
-  async leaveRoom(roomId: string, userId: string): Promise<void> {
-    const room = this.rooms.find(r => r.id === roomId);
-    if (!room) {
-      throw new NotFoundException('Salon non trouvé');
-    }
-
-    const memberIndex = room.members.findIndex(member => member.userId === userId);
-    if (memberIndex === -1) {
-      throw new NotFoundException('Vous n\'êtes pas membre de ce salon');
-    }
-
-    const member = room.members[memberIndex];
-
-    // Si c'est le propriétaire, vérifier s'il y a d'autres membres
-    if (member.role === 'OWNER' && room.members.length > 1) {
-      throw new ForbiddenException('Le propriétaire ne peut pas quitter le salon tant qu\'il y a d\'autres membres');
-    }
-
-    // Supprimer le membre
-    room.members.splice(memberIndex, 1);
-    room.updatedAt = new Date();
-
-    // Si c'était le dernier membre, supprimer le salon
-    if (room.members.length === 0) {
-      const roomIndex = this.rooms.findIndex(r => r.id === roomId);
-      if (roomIndex !== -1) {
-        this.rooms.splice(roomIndex, 1);
-      }
-    }
+  async findAll() {
+    return this.prisma.room.findMany({
+      where: { isPrivate: false },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        team: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+          },
+        },
+        _count: {
+          select: {
+            members: true,
+            messages: true,
+          },
+        },
+      },
+    });
   }
 
-  // 🌸 Récupérer un salon par ID
-  async getRoomById(roomId: string, userId: string): Promise<SimpleRoom> {
-    const room = this.rooms.find(r => r.id === roomId);
+  async findOne(id: string) {
+    const room = await this.prisma.room.findUnique({
+      where: { id },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        team: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+          },
+        },
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: {
+            messages: true,
+          },
+        },
+      },
+    });
+
     if (!room) {
       throw new NotFoundException('Salon non trouvé');
-    }
-
-    // Vérifier si l'utilisateur est membre
-    const isMember = room.members.some(member => member.userId === userId);
-    if (!isMember && room.isPrivate) {
-      throw new ForbiddenException('Accès refusé à ce salon privé');
     }
 
     return room;
   }
 
-  // 🌸 Mettre à jour un salon
-  async updateRoom(roomId: string, updates: Partial<CreateRoomDto>, userId: string): Promise<SimpleRoom> {
-    const room = this.rooms.find(r => r.id === roomId);
-    if (!room) {
-      throw new NotFoundException('Salon non trouvé');
-    }
-
-    const member = room.members.find(m => m.userId === userId);
+  async update(id: string, updateRoomDto: any, userId: string) {
+    const room = await this.findOne(id);
+    
+    const member = room.members.find(m => m.user.id === userId);
     if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
       throw new ForbiddenException('Vous n\'avez pas les permissions pour modifier ce salon');
     }
 
-    // Appliquer les mises à jour
-    Object.assign(room, updates);
-    room.updatedAt = new Date();
-
-    return room;
+    return this.prisma.room.update({
+      where: { id },
+      data: updateRoomDto,
+      include: {
+        owner: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        team: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+          },
+        },
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+      },
+    });
   }
 
-  // 🌸 Supprimer un salon
-  async deleteRoom(roomId: string, userId: string): Promise<void> {
-    const room = this.rooms.find(r => r.id === roomId);
-    if (!room) {
-      throw new NotFoundException('Salon non trouvé');
-    }
-
-    const member = room.members.find(m => m.userId === userId);
-    if (!member || member.role !== 'OWNER') {
+  async remove(id: string, userId: string) {
+    const room = await this.findOne(id);
+    
+    if (room.owner.id !== userId) {
       throw new ForbiddenException('Seul le propriétaire peut supprimer le salon');
     }
 
-    const roomIndex = this.rooms.findIndex(r => r.id === roomId);
-    if (roomIndex !== -1) {
-      this.rooms.splice(roomIndex, 1);
+    return this.prisma.room.delete({
+      where: { id },
+    });
+  }
+
+  async joinRoom(id: string, joinRoomDto: JoinRoomDto, userId: string) {
+    const room = await this.findOne(id);
+    
+    const existingMember = room.members.find(m => m.user.id === userId);
+    if (existingMember) {
+      throw new ForbiddenException('Vous êtes déjà membre de ce salon');
     }
+
+    if (room.members.length >= room.maxMembers) {
+      throw new ForbiddenException('Ce salon est plein');
+    }
+
+    return this.prisma.roomMember.create({
+      data: {
+        userId,
+        roomId: id,
+        role: joinRoomDto.role || 'MEMBER',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+      },
+    });
+  }
+
+  async leaveRoom(id: string, userId: string) {
+    const room = await this.findOne(id);
+    
+    const member = room.members.find(m => m.user.id === userId);
+    if (!member) {
+      throw new ForbiddenException('Vous n\'êtes pas membre de ce salon');
+    }
+
+    if (room.owner.id === userId) {
+      throw new ForbiddenException('Le propriétaire ne peut pas quitter le salon');
+    }
+
+    return this.prisma.roomMember.delete({
+      where: {
+        userId_roomId: {
+          userId,
+          roomId: id,
+        },
+      },
+    });
+  }
+
+  async getUserRooms(userId: string) {
+    return this.prisma.room.findMany({
+      where: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        team: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+          },
+        },
+        _count: {
+          select: {
+            members: true,
+            messages: true,
+          },
+        },
+      },
+    });
+  }
+
+  async getTeamRooms(teamId: string) {
+    return this.prisma.room.findMany({
+      where: { teamId },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        _count: {
+          select: {
+            members: true,
+            messages: true,
+          },
+        },
+      },
+    });
   }
 }

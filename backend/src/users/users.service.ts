@@ -1,10 +1,31 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
+
+  async create(createUserDto: CreateUserDto) {
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: createUserDto.email },
+          { username: createUserDto.username },
+        ],
+      },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Un utilisateur avec cet email ou nom d\'utilisateur existe déjà');
+    }
+
+    return this.prisma.user.create({
+      data: createUserDto,
+      include: { profile: true },
+    });
+  }
 
   async findAll() {
     return this.prisma.user.findMany({
@@ -13,10 +34,11 @@ export class UsersService {
         email: true,
         username: true,
         avatar: true,
-        status: true,
+        bio: true,
         isOnline: true,
         lastSeen: true,
         createdAt: true,
+        profile: true,
       },
     });
   }
@@ -24,114 +46,77 @@ export class UsersService {
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        avatar: true,
-        status: true,
-        isOnline: true,
-        lastSeen: true,
-        createdAt: true,
-        updatedAt: true,
-        ownedRooms: {
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            isPrivate: true,
-            isVoice: true,
-            maxMembers: true,
-          },
-        },
-        roomMembers: {
-          select: {
-            role: true,
-            room: {
-              select: {
-                id: true,
-                name: true,
-                description: true,
-                isPrivate: true,
-                isVoice: true,
-              },
-            },
-          },
-        },
-      },
+      include: { profile: true },
     });
 
     if (!user) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
-
     return user;
   }
 
   async findByEmail(email: string) {
     return this.prisma.user.findUnique({
       where: { email },
+      include: { profile: true },
+    });
+  }
+
+  async findByUsername(username: string) {
+    return this.prisma.user.findUnique({
+      where: { username },
+      include: { profile: true },
     });
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    const user = await this.prisma.user.update({
-      where: { id },
-      data: updateUserDto,
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        avatar: true,
-        status: true,
-        isOnline: true,
-        lastSeen: true,
-        updatedAt: true,
-      },
-    });
+    await this.findOne(id);
 
-    if (!user) {
-      throw new NotFoundException('Utilisateur non trouvé');
+    if (updateUserDto.email || updateUserDto.username) {
+      const existingUser = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            ...(updateUserDto.email ? [{ email: updateUserDto.email }] : []),
+            ...(updateUserDto.username ? [{ username: updateUserDto.username }] : []),
+          ],
+          NOT: { id },
+        },
+      });
+
+      if (existingUser) {
+        throw new ConflictException('Un utilisateur avec cet email ou nom d\'utilisateur existe déjà');
+      }
     }
 
-    return user;
+    return this.prisma.user.update({
+      where: { id },
+      data: updateUserDto,
+      include: { profile: true },
+    });
   }
 
   async remove(id: string) {
-    const user = await this.prisma.user.delete({
+    await this.findOne(id);
+
+    return this.prisma.user.delete({
       where: { id },
-    });
-
-    if (!user) {
-      throw new NotFoundException('Utilisateur non trouvé');
-    }
-
-    return { message: 'Utilisateur supprimé avec succès' };
-  }
-
-  async updateStatus(id: string, status: string) {
-    return this.prisma.user.update({
-      where: { id },
-      data: { status },
-      select: {
-        id: true,
-        status: true,
-        isOnline: true,
-        lastSeen: true,
-      },
     });
   }
 
-  async updateOnlineStatus(id: string, isOnline: boolean) {
+  async setOnlineStatus(userId: string, isOnline: boolean) {
     return this.prisma.user.update({
-      where: { id },
-      data: { 
-        isOnline,
-        lastSeen: new Date(),
-      },
+      where: { id: userId },
+      data: { isOnline, lastSeen: new Date() },
+    });
+  }
+
+  async getOnlineUsers() {
+    return this.prisma.user.findMany({
+      where: { isOnline: true },
       select: {
         id: true,
-        isOnline: true,
+        username: true,
+        avatar: true,
         lastSeen: true,
       },
     });

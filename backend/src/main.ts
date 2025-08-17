@@ -1,6 +1,5 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as helmet from 'helmet';
 import * as compression from 'compression';
 import * as rateLimit from 'express-rate-limit';
@@ -61,32 +60,10 @@ async function bootstrap() {
   // Préfixe global de l'API
   app.setGlobalPrefix('api');
 
-  // Swagger (uniquement en développement)
-  if (process.env.ENABLE_SWAGGER === 'true' && !isProduction) {
-    const config = new DocumentBuilder()
-      .setTitle(process.env.SWAGGER_TITLE || 'ETERNA Backend API')
-      .setDescription(
-        process.env.SWAGGER_DESCRIPTION || 'API complète pour l\'application ETERNA',
-      )
-      .setVersion(process.env.SWAGGER_VERSION || '1.0.0')
-      .addBearerAuth()
-      .addTag('auth', 'Authentification')
-      .addTag('users', 'Gestion des utilisateurs')
-      .addTag('teams', 'Gestion des équipes')
-      .addTag('rooms', 'Gestion des salons')
-      .addTag('messages', 'Gestion des messages')
-      .addTag('websocket', 'Communication temps réel')
-      .build();
-
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('docs', app, document);
-  }
-
   // Démarrage du serveur
   await app.listen(port);
   
   console.log(`🚀 Serveur ETERNA démarré sur le port ${port}`);
-  console.log(`📚 Swagger: ${process.env.ENABLE_SWAGGER === 'true' ? `http://localhost:${port}/docs` : 'Désactivé'}`);
   console.log(`🏥 Health check: http://localhost:${port}/api/health`);
   console.log(`🌍 Mode: ${isProduction ? 'Production' : 'Développement'}`);
 }
