@@ -2,7 +2,7 @@ services:
   - type: web
     name: eterna-backend
     env: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install
     startCommand: npm run start:prod
     envVars:
       - key: NODE_ENV
