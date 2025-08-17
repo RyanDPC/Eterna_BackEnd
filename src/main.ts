@@ -52,11 +52,13 @@ async function bootstrap() {
     trustProxy: true,
   }));
 
-  // Configuration CORS
+  // Configuration CORS - CORRIGÉE pour inclure le frontend Render
   const corsOrigin = process.env.CORS_ORIGIN;
   const corsOrigins = corsOrigin === '*' ? true : corsOrigin?.split(',') || [
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:1420', // Frontend local
+    'https://eterna-frontend.onrender.com', // Frontend Render
   ];
 
   app.enableCors({

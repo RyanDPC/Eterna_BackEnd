@@ -1390,14 +1390,14 @@ export class SimpleOAuthController {
         });
       }
 
-      // Configuration robuste du cookie
+      // Configuration robuste du cookie - CORRIGÉE pour la production
       const cookieOptions = {
         httpOnly: false, // Permettre l'accès depuis le frontend
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax' as const,
+        secure: process.env.NODE_ENV === 'production' || process.env.RENDER === 'true', // true en production/Render
+        sameSite: process.env.NODE_ENV === 'production' || process.env.RENDER === 'true' ? 'none' as const : 'lax' as const, // 'none' pour cross-origin en production
         maxAge: 5 * 60 * 1000, // 5 minutes
         path: '/', // S'assurer que le cookie est accessible partout
-        domain: undefined, // Utiliser le domaine par défaut
+        domain: process.env.NODE_ENV === 'production' || process.env.RENDER === 'true' ? '.onrender.com' : undefined, // Domaine partagé en production
         expires: new Date(Date.now() + 5 * 60 * 1000) // Expiration explicite
       };
 
