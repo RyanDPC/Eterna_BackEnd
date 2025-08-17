@@ -10,9 +10,8 @@ import {
   ClassSerializerInterceptor,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { SocialAuthService, SteamProfile, AppleProfile } from './social-auth.service';
+import { SocialAuthService } from './social-auth.service';
 import { RefreshTokenService } from './refresh-token.service';
-import { GoogleProfile } from './strategies/google.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
 import { RegisterDto } from './dto/register.dto';
@@ -74,6 +73,7 @@ export class AuthController {
   /**
    * POST /auth/social-login/:provider
    * Connexion via OAuth (Google, Apple, Steam)
+   * Version simplifiée - reçoit directement les données d'authentification
    */
   @UseGuards(AuthRateLimitGuard)
   @Post('social-login/:provider')
@@ -86,40 +86,8 @@ export class AuthController {
       throw new Error('Provider non supporté');
     }
 
-    // Ici vous devrez implémenter la validation du token selon le provider
-    // Pour l'instant, on simule un profil selon le provider
-    let mockProfile: GoogleProfile | AppleProfile | SteamProfile;
-    
-    if (provider === 'google') {
-      mockProfile = {
-        id: 'mock_google_id',
-        email: 'user@example.com',
-        name: 'Mock Google User',
-        picture: 'https://example.com/avatar.jpg',
-        verified_email: true,
-      } as GoogleProfile;
-    } else if (provider === 'apple') {
-      mockProfile = {
-        id: 'mock_apple_id',
-        email: 'user@example.com', 
-        name: 'Mock Apple User',
-        picture: 'https://example.com/apple-avatar.jpg',
-      } as AppleProfile;
-    } else {
-      mockProfile = {
-        id: 'mock_steam_id',
-        username: 'MockSteamUser',
-        displayName: 'Mock Steam User',
-        avatar: 'https://example.com/steam-avatar.jpg',
-        profileUrl: 'https://steamcommunity.com/id/mockuser',
-      } as SteamProfile;
-    }
-
-    return this.socialAuthService.authenticateWithSocial(
-      provider,
-      mockProfile,
-      socialAuthDto.accessToken,
-    );
+    // Traitement de l'authentification sociale
+    return this.socialAuthService.processSocialLogin(provider, socialAuthDto);
   }
 
   /**
@@ -198,7 +166,7 @@ export class AuthController {
   @Post('link-social')
   async linkSocialAccount(@Request() req, @Body() linkSocialDto: LinkSocialAccountDto) {
     // Ici vous devrez implémenter la validation du token selon le provider
-    let mockProfile: GoogleProfile | AppleProfile | SteamProfile;
+    let mockProfile: any; // Placeholder, actual implementation needed
     
     if (linkSocialDto.provider === 'google') {
       mockProfile = {
@@ -207,14 +175,14 @@ export class AuthController {
         name: 'Mock Google User',
         picture: 'https://example.com/avatar.jpg',
         verified_email: true,
-      } as GoogleProfile;
+      };
     } else if (linkSocialDto.provider === 'apple') {
       mockProfile = {
         id: 'mock_apple_id',
         email: 'user@example.com', 
         name: 'Mock Apple User',
         picture: 'https://example.com/apple-avatar.jpg',
-      } as AppleProfile;
+      };
     } else {
       mockProfile = {
         id: 'mock_steam_id',
@@ -222,7 +190,7 @@ export class AuthController {
         displayName: 'Mock Steam User',
         avatar: 'https://example.com/steam-avatar.jpg',
         profileUrl: 'https://steamcommunity.com/id/mockuser',
-      } as SteamProfile;
+      };
     }
 
     return this.socialAuthService.linkSocialAccount(

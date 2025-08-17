@@ -7,18 +7,15 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { SocialAuthService } from './social-auth.service';
 import { RefreshTokenService } from './refresh-token.service';
-import { GoogleOAuthService } from './google-oauth.service';
-import { SteamOAuthService } from './steam-oauth.service';
+import { SimpleOAuthService } from './simple-oauth.service';
 
 // Controllers
 import { AuthController } from './auth.controller';
-import { GoogleOAuthController } from './google-oauth.controller';
-import { SteamOAuthController } from './steam-oauth.controller';
+import { SimpleOAuthController } from './simple-oauth.controller';
 
 // Strategies
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
-import { GoogleStrategy } from './strategies/google.strategy';
 
 // Guards
 import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
@@ -47,19 +44,17 @@ import { EmailModule } from '../email/email.module';
     }),
     ConfigModule,
   ],
-  controllers: [AuthController, SteamOAuthController, GoogleOAuthController],
+  controllers: [AuthController, SimpleOAuthController],
   providers: [
     // Services
     AuthService,
     SocialAuthService,
     RefreshTokenService,
-    GoogleOAuthService,
-    SteamOAuthService,
+    SimpleOAuthService,
     
     // Strategies
     JwtStrategy,
     LocalStrategy,
-    GoogleStrategy,
     
     // Guards
     AuthRateLimitGuard,
@@ -68,8 +63,7 @@ import { EmailModule } from '../email/email.module';
     AuthService,
     SocialAuthService,
     RefreshTokenService,
-    GoogleOAuthService,
-    SteamOAuthService,
+    SimpleOAuthService,
     JwtModule,
   ],
 })
